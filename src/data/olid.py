@@ -9,17 +9,23 @@ _DESCRIPTION = """
 """
 
 _DATA_URL = {
-    'train': 'https://raw.githubusercontent.com/idontflow/OLID/master/olid-training-v1.0.tsv',
-    'test': {
-        'offensive': {
+    'offensive': {
+        'train': 'https://raw.githubusercontent.com/idontflow/OLID/master/olid-training-v1.0.tsv',
+        'test': {
             'texts': 'https://raw.githubusercontent.com/idontflow/OLID/master/testset-levela.tsv',
             'labels': 'https://raw.githubusercontent.com/idontflow/OLID/master/labels-levela.csv',
         },
-        'targeted': {
+    },
+    'targeted': {
+        'train': 'https://raw.githubusercontent.com/idontflow/OLID/master/olid-training-v1.0.tsv',
+        'test': {
             'texts': 'https://raw.githubusercontent.com/idontflow/OLID/master/testset-levelb.tsv',
             'labels': 'https://raw.githubusercontent.com/idontflow/OLID/master/labels-levelb.csv',
         },
-        'target': {
+    },
+    'target': {
+        'train': 'https://raw.githubusercontent.com/idontflow/OLID/master/olid-training-v1.0.tsv',
+        'test': {
             'texts': 'https://raw.githubusercontent.com/idontflow/OLID/master/testset-levelc.tsv',
             'labels': 'https://raw.githubusercontent.com/idontflow/OLID/master/labels-levelc.csv',
         },
@@ -28,44 +34,68 @@ _DATA_URL = {
 
 
 class OLID(datasets.GeneratorBasedBuilder):
+    VERSION = datasets.Version("1.0.0")
+
+    BUILDER_CONFIGS = [
+        datasets.BuilderConfig(name="offensive", version=VERSION),
+        datasets.BuilderConfig(name="targeted", version=VERSION),
+        datasets.BuilderConfig(name="target", version=VERSION),
+    ]
 
     def _info(self):
-        return datasets.DatasetInfo(
-            description=_DESCRIPTION,
-            features=datasets.Features(
+        if self.config.name == 'offensive':
+            features = datasets.Features(
                 {
                     'id': datasets.Value('int64'),
                     'text': datasets.Value('string'),
-                    'offensive': datasets.features.ClassLabel(
+                    'label': datasets.features.ClassLabel(
                         names=[
                             'NOT',
                             'OFF',
                         ]
                     ),
-                    'targeted': datasets.features.ClassLabel(
+                }
+            )
+        elif self.config.name == 'targeted':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('int64'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
                         names=[
-                            'NULL',
                             'UNT',
                             'TIN',
                         ]
                     ),
-                    'target': datasets.features.ClassLabel(
+                }
+            )
+        elif self.config.name == 'target':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('int64'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
                         names=[
-                            'NULL',
                             'IND',
                             'GRP',
                             'OTH',
                         ]
                     ),
                 }
-            ),
+            )
+        else:
+            raise NotImplementedError(f'Not supported config: {self.config.name}')
+
+        return datasets.DatasetInfo(
+            description=_DESCRIPTION,
+            features=features,
             supervised_keys=None,
             homepage='https://github.com/idontflow/OLID',
             citation=_CITATION,
         )
 
     def _split_generators(self, dl_manager):
-        dl_dir = dl_manager.download_and_extract(_DATA_URL)
+        dl_dir = dl_manager.download_and_extract(_DATA_URL[self.config.name])
 
         return [
             datasets.SplitGenerator(
@@ -99,58 +129,52 @@ class OLID(datasets.GeneratorBasedBuilder):
             for idx, row in enumerate(csv_reader):
                 id, text, offensive, targeted, target = row
 
+                if self.config.name == 'offensive':
+                    label = offensive
+                elif self.config.name == 'targeted':
+                    if targeted == 'NULL':
+                        continue
+                    label = targeted
+                else:
+                    if target == 'NULL':
+                        continue
+                    label = target
+
                 yield idx, {
                     'id': id,
                     'text': text,
-                    'offensive': offensive,
-                    'targeted': targeted,
-                    'target': target,
+                    'label': label,
                 }
 
     def _generate_test_examples(self, filepath):
-        labels = dict()
-        for key, value in filepath.items():
-            with open(value['labels']) as fin:
-                tmp_dict = dict()
+        with open(filepath['labels']) as fin:
+            labels = dict()
+            for line in fin:
+                line = line.strip().split(',')
+                labels[line[0]] = line[1]
 
-                for line in fin:
-                    line = line.strip().split(',')
-                    tmp_dict[line[0]] = line[1]
+        with open(filepath['texts'], encoding='utf-8') as fin:
+            csv_reader = csv.reader(
+                fin,
+                quotechar='"',
+                delimiter='\t',
+                quoting=csv.QUOTE_NONE,
+                skipinitialspace=True,
+            )
 
-                labels[key] = tmp_dict
+            # skip header
+            next(csv_reader)
 
-        texts = dict()
-        for key, value in filepath.items():
-            with open(value['texts'], encoding='utf-8') as fin:
-                csv_reader = csv.reader(
-                    fin,
-                    quotechar='"',
-                    delimiter='\t',
-                    quoting=csv.QUOTE_NONE,
-                    skipinitialspace=True,
-                )
+            idx = 0
+            for row in csv_reader:
+                id, text = row
 
-                # skip header
-                next(csv_reader)
+                if id not in labels:
+                    continue
 
-                for idx, row in enumerate(csv_reader):
-                    id, text = row
-
-                    if id in texts:
-                        assert texts[id] == text
-                    else:
-                        texts[id] = text
-
-        for idx, id in enumerate(sorted(texts.keys())):
-            text = texts[id]
-            offensive = labels['offensive'][id]
-            targeted = labels['targeted'][id] if id in labels['targeted'] else 'NULL'
-            target = labels['target'][id] if id in labels['target'] else 'NULL'
-
-            yield idx, {
-                'id': id,
-                'text': text,
-                'offensive': offensive,
-                'targeted': targeted,
-                'target': target,
-            }
+                yield idx, {
+                    'id': id,
+                    'text': text,
+                    'label': labels[id],
+                }
+                idx += 1

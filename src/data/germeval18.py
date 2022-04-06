@@ -15,20 +15,31 @@ _DATA_URL = {
 
 
 class GermEval18(datasets.GeneratorBasedBuilder):
+    VERSION = datasets.Version("1.0.0")
+
+    BUILDER_CONFIGS = [
+        datasets.BuilderConfig(name="binary", version=VERSION),
+        datasets.BuilderConfig(name="fine_grained", version=VERSION),
+    ]
 
     def _info(self):
-        return datasets.DatasetInfo(
-            description=_DESCRIPTION,
-            features=datasets.Features(
+        if self.config.name == 'binary':
+            features = datasets.Features(
                 {
                     'text': datasets.Value('string'),
-                    'label_binary': datasets.features.ClassLabel(
+                    'label': datasets.features.ClassLabel(
                         names=[
                             'OTHER',
                             'OFFENSE',
                         ]
                     ),
-                    'label_fine_grained': datasets.features.ClassLabel(
+                }
+            )
+        elif self.config.name == 'fine_grained':
+            features = datasets.Features(
+                {
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
                         names=[
                             'OTHER',
                             'PROFANITY',
@@ -37,7 +48,13 @@ class GermEval18(datasets.GeneratorBasedBuilder):
                         ]
                     ),
                 }
-            ),
+            )
+        else:
+            raise NotImplementedError(f'Not supported config: {self.config.name}')
+
+        return datasets.DatasetInfo(
+            description=_DESCRIPTION,
+            features=features,
             supervised_keys=None,
             homepage='https://github.com/uds-lsv/GermEval-2018-Data',
             citation=_CITATION,
@@ -67,11 +84,12 @@ class GermEval18(datasets.GeneratorBasedBuilder):
                 skipinitialspace=True,
             )
 
-            for idx, row in enumerate(csv_reader):
+            idx = 0
+            for row in csv_reader:
                 text, label_binary, label_fine_grained = row
 
                 yield idx, {
                     'text': text,
-                    'label_binary': label_binary,
-                    'label_fine_grained': label_fine_grained,
+                    'label': label_binary if self.config.name == 'binary' else label_fine_grained,
                 }
+                idx += 1
