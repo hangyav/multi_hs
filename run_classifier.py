@@ -45,6 +45,7 @@ from transformers import (
     TrainingArguments,
     default_data_collator,
     set_seed,
+    EarlyStoppingCallback,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
@@ -190,13 +191,37 @@ class ModelArguments:
         },
     )
 
+@dataclass
+class MyTrainingArguments(TrainingArguments):
+    early_stopping_patience: int = field(
+        default=-1,
+        metadata={
+            "help": ">=0 to set early stopping"
+        },
+    )
+    early_stopping_threshold: Optional[float] = field(
+        default=0.0,
+        metadata={
+            "help": "Denote how much the specified metric must improve to satisfy early stopping conditions."
+        },
+    )
+    metric_for_best_model: Optional[str] = field(
+        default='eval_macro_averaged_F1',
+        metadata={"help": "The metric to use to compare two models."}
+    )
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.early_stopping_patience >= 0:
+            self.load_best_model_at_end = True
+
 
 def setup():
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments, MultiLingAdapterArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, MyTrainingArguments, MultiLingAdapterArguments))
 
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
@@ -623,6 +648,13 @@ def main():
         data_collator = None
 
     # Initialize our Trainer
+    callbacks = []
+    if training_args.early_stopping_patience >= 0:
+        callbacks.append(EarlyStoppingCallback(
+            training_args.early_stopping_patience,
+            training_args.early_stopping_threshold,
+        ))
+
     trainer_class = AdapterTrainer if adapter_args.train_adapter else Trainer
     trainer = trainer_class(
         model=model,
@@ -632,6 +664,7 @@ def main():
         compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
+        callbacks=callbacks,
     )
 
     # Training
@@ -647,6 +680,12 @@ def main():
             data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
         )
         metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+
+        # XXX There seems to be a bug in the adapter-transformers library.
+        # When --train_adapter and --load_best_model_at_end is set the
+        # classification head of the reloaded model stays on the CPU.
+        # The command below moves the whole model to the same device.
+        trainer.model = trainer.model.to(trainer.model.device)
 
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
