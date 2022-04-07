@@ -258,7 +258,9 @@ def get_datasets(model_args, data_args, training_args):
     elif data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         raw_datasets = load_dataset(
-            data_args.dataset_name, data_args.dataset_config_name, cache_dir=model_args.cache_dir
+            f'src/data/{data_args.dataset_name}',
+            data_args.dataset_config_name,
+            cache_dir=model_args.cache_dir,
         )
     else:
         # TODO need to set the right adapter name
@@ -361,8 +363,7 @@ def get_models(model_args, data_args, training_args, adapter_args, num_labels,
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    tmp_dataset_name = data_args.dataset_name.replace('.py', '')
-    task_name = data_args.task_name or f"{tmp_dataset_name}/{data_args.dataset_config_name}"
+    task_name = data_args.task_name or f"{data_args.dataset_name}-{data_args.dataset_config_name}"
     model.add_classification_head(
         task_name,
         num_labels=num_labels,
@@ -679,16 +680,14 @@ def main():
         for predict_dataset, task in zip(predict_datasets, tasks):
             # Removing the `label` columns because it contains -1 and Trainer won't like that.
             #  predict_dataset = predict_dataset.remove_columns("label")
-
-            # FIXME a bit inefficient to do eval and predict separately
-            metrics = trainer.evaluate(eval_dataset=predict_dataset)
+            predict_res = trainer.predict(predict_dataset, metric_key_prefix="predict")
+            predictions = predict_res.predictions
+            metrics = predict_res.metrics
 
             metrics["predict_samples"] = len(predict_dataset)
-
             trainer.log_metrics("predict", metrics)
             trainer.save_metrics("predict", metrics)
 
-            predictions = trainer.predict(predict_dataset, metric_key_prefix="predict").predictions
             predictions = np.squeeze(predictions) if is_regression else np.argmax(predictions, axis=1)
 
             output_predict_file = os.path.join(training_args.output_dir, f"predict_results_{task}.txt")
