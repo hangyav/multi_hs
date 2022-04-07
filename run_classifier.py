@@ -263,7 +263,7 @@ def get_datasets(model_args, data_args, training_args):
             cache_dir=model_args.cache_dir,
         )
     else:
-        # TODO need to set the right adapter name
+        # TODO need to set the right adapter name and handle label2id conversion
         raise NotImplementedError('Not supported currently.')
         # Loading a dataset from your local files.
         # CSV/JSON training and evaluation files are needed.
@@ -310,8 +310,7 @@ def get_datasets(model_args, data_args, training_args):
         else:
             # A useful fast method:
             # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.unique
-            label_list = raw_datasets["train"].unique("label")
-            label_list.sort()  # Let's sort it for determinism
+            label_list = raw_datasets["train"].features["label"].names
             num_labels = len(label_list)
 
     return raw_datasets, num_labels, label_list, is_regression
@@ -494,8 +493,9 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
         result = tokenizer(*args, padding=padding, max_length=max_seq_length, truncation=True)
 
         # Map labels to IDs (not necessary for GLUE tasks)
-        if label_to_id is not None and "label" in examples:
-            result["label"] = [(label_to_id[l] if l != -1 else -1) for l in examples["label"]]
+        #  if label_to_id is not None and "label" in examples:
+        #      result["label"] = [(label_to_id[l] if l != -1 else -1) for l in examples["label"]]
+        result['label'] = examples['label']
         return result
 
     with training_args.main_process_first(desc="dataset map pre-processing"):
@@ -574,9 +574,10 @@ def main():
     else:
         metric = [
             load_metric("accuracy"),
-            load_metric("f1"),
-            load_metric("precision"),
-            load_metric("recall"),
+            #  load_metric("f1"),
+            #  load_metric("precision"),
+            #  load_metric("recall"),
+            load_metric("src/metrics/f1_report"),
         ]
 
     # You can define your custom compute_metrics function. It takes an
@@ -595,7 +596,19 @@ def main():
         else:
             res = dict()
             for m in metric:
-                for k, v in m.compute(predictions=preds, references=p.label_ids).items():
+                if m.info.metric_name == 'f1_report':
+                    scores = m.compute(
+                        predictions=preds,
+                        references=p.label_ids,
+                        label_names=label_list,
+                    )
+                else:
+                    scores = m.compute(
+                        predictions=preds,
+                        references=p.label_ids,
+                    )
+
+                for k, v in scores.items():
                     res[k] = v
 
             return res
