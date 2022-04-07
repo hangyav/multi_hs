@@ -1,6 +1,7 @@
 import os
 import csv
 import datasets
+from sklearn.model_selection import train_test_split
 
 
 _CITATION = """
@@ -105,6 +106,17 @@ class HASOC19(datasets.GeneratorBasedBuilder):
                         dl_dir,
                         _DATA_PATHS[language]['train'],
                     ),
+                    'split': 'train',
+                },
+            ),
+            datasets.SplitGenerator(
+                name=datasets.Split.VALIDATION,
+                gen_kwargs={
+                    'filepath': os.path.join(
+                        dl_dir,
+                        _DATA_PATHS[language]['train'],
+                    ),
+                    'split': 'validation',
                 },
             ),
             datasets.SplitGenerator(
@@ -114,14 +126,16 @@ class HASOC19(datasets.GeneratorBasedBuilder):
                         dl_dir,
                         _DATA_PATHS[language]['test'],
                     ),
+                    'split': 'test',
                 },
             ),
         ]
 
-    def _generate_examples(self, filepath):
+    def _generate_examples(self, filepath, split):
         language, type = self.config.name.split('-')
         is_targeted = language != 'de'
 
+        data = list()
         with open(filepath, encoding='utf-8') as fin:
             csv_reader = csv.reader(
                 fin,
@@ -152,9 +166,29 @@ class HASOC19(datasets.GeneratorBasedBuilder):
                 if label == 'NONE':
                     continue
 
-                yield idx, {
+                item = {
                     'id': id,
                     'text': text,
                     'label': label,
                 }
+                if split == 'test':
+                    yield idx, item
+                else:
+                    data.append(item)
                 idx += 1
+
+        if split != 'test':
+            train, valid = train_test_split(
+                data,
+                test_size=0.2,
+                random_state=0,
+                stratify=[item['label'] for item in data]
+            )
+
+            if split == 'train':
+                data = train
+            else:
+                data = valid
+
+            for idx, item in enumerate(data):
+                yield idx, item

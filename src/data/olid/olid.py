@@ -1,5 +1,6 @@
 import csv
 import datasets
+from sklearn.model_selection import train_test_split
 
 
 _CITATION = """
@@ -100,20 +101,25 @@ class OLID(datasets.GeneratorBasedBuilder):
         return [
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
-                gen_kwargs={'filepath': dl_dir['train'], 'train': True}
+                gen_kwargs={'filepath': dl_dir['train'], 'split': 'train'}
+            ),
+            datasets.SplitGenerator(
+                name=datasets.Split.VALIDATION,
+                gen_kwargs={'filepath': dl_dir['train'], 'split': 'validation'}
             ),
             datasets.SplitGenerator(
                 name=datasets.Split.TEST,
-                gen_kwargs={'filepath': dl_dir['test'], 'train': False}),
+                gen_kwargs={'filepath': dl_dir['test'], 'split': 'test'}),
         ]
 
-    def _generate_examples(self, filepath, train):
-        if train:
-            return self._generate_train_examples(filepath)
+    def _generate_examples(self, filepath, split):
+        if split != 'test':
+            return self._generate_train_valid_examples(filepath, split)
         else:
             return self._generate_test_examples(filepath)
 
-    def _generate_train_examples(self, filepath):
+    def _generate_train_valid_examples(self, filepath, split):
+        data = list()
         with open(filepath, encoding='utf-8') as fin:
             csv_reader = csv.reader(
                 fin,
@@ -126,7 +132,7 @@ class OLID(datasets.GeneratorBasedBuilder):
             # skip header
             next(csv_reader)
 
-            for idx, row in enumerate(csv_reader):
+            for row in csv_reader:
                 id, text, offensive, targeted, target = row
 
                 if self.config.name == 'offensive':
@@ -140,11 +146,26 @@ class OLID(datasets.GeneratorBasedBuilder):
                         continue
                     label = target
 
-                yield idx, {
+                data.append({
                     'id': id,
                     'text': text,
                     'label': label,
-                }
+                })
+
+        train, valid = train_test_split(
+            data,
+            test_size=0.2,
+            random_state=0,
+            stratify=[item['label'] for item in data]
+        )
+
+        if split == 'train':
+            data = train
+        else:
+            data = valid
+
+        for idx, item in enumerate(data):
+            yield idx, item
 
     def _generate_test_examples(self, filepath):
         with open(filepath['labels']) as fin:

@@ -516,13 +516,9 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
 
     eval_dataset = None
     if training_args.do_eval:
-        # TODO restore this after creating validation sets
-        #  if "validation" not in raw_datasets and "validation_matched" not in raw_datasets:
-        if "test" not in raw_datasets:
+        if "validation" not in raw_datasets and "validation_matched" not in raw_datasets:
             raise ValueError("--do_eval requires a validation dataset")
-        # TODO restore this after creating validation sets
-        #  eval_dataset = raw_datasets["validation_matched" if data_args.task_name == "mnli" else "validation"]
-        eval_dataset = raw_datasets["test"]
+        eval_dataset = raw_datasets["validation_matched" if data_args.task_name == "mnli" else "validation"]
         if data_args.max_eval_samples is not None:
             eval_dataset = eval_dataset.select(range(data_args.max_eval_samples))
 

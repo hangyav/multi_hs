@@ -21,6 +21,7 @@ import csv
 import os
 
 import datasets
+from sklearn.model_selection import train_test_split
 
 
 _CITATION = """\
@@ -101,21 +102,42 @@ class HateSpeech18(datasets.GeneratorBasedBuilder):
 
         return [
             datasets.SplitGenerator(
-                name=datasets.Split.TRAIN, gen_kwargs={"filepath": os.path.join(dl_dir, "hate-speech-dataset-master")}
+                name=datasets.Split.TRAIN,
+                gen_kwargs={
+                    "filepath": os.path.join(dl_dir, "hate-speech-dataset-master"),
+                    'split': 'train',
+                }
+            ),
+            datasets.SplitGenerator(
+                name=datasets.Split.VALIDATION,
+                gen_kwargs={
+                    "filepath": os.path.join(dl_dir, "hate-speech-dataset-master"),
+                    'split': 'validation',
+                }
+            ),
+            datasets.SplitGenerator(
+                name=datasets.Split.TEST,
+                gen_kwargs={
+                    "filepath": os.path.join(dl_dir, "hate-speech-dataset-master"),
+                    'split': 'test',
+                }
             ),
         ]
 
-    def _generate_examples(self, filepath):
-
+    def _generate_examples(self, filepath, split):
+        data = list()
         with open(os.path.join(filepath, "annotations_metadata.csv"), encoding="utf-8") as csv_file:
 
             csv_reader = csv.reader(
-                csv_file, quotechar='"', delimiter=",", quoting=csv.QUOTE_ALL, skipinitialspace=True
+                csv_file,
+                quotechar='"',
+                delimiter=",",
+                quoting=csv.QUOTE_ALL,
+                skipinitialspace=True
             )
 
             next(csv_reader)
 
-            idx = 0
             for row in csv_reader:
                 file_id, user_id, subforum_id, num_contexts, label = row
 
@@ -128,11 +150,33 @@ class HateSpeech18(datasets.GeneratorBasedBuilder):
                 with open(path, encoding="utf-8") as file:
                     text = file.read()
 
-                yield idx, {
+                data.append({
                     "text": text,
                     "user_id": user_id,
                     "subforum_id": subforum_id,
                     "num_contexts": num_contexts,
                     "label": label,
-                }
-                idx += 1
+                })
+
+        train, test = train_test_split(
+            data,
+            test_size=0.2,
+            random_state=0,
+            stratify=[item['label'] for item in data]
+        )
+        train, valid = train_test_split(
+            train,
+            test_size=0.2,
+            random_state=0,
+            stratify=[item['label'] for item in train]
+        )
+
+        if split == 'train':
+            data = train
+        elif split == 'validation':
+            data = valid
+        else:
+            data = test
+
+        for idx, item in enumerate(data):
+            yield idx, item

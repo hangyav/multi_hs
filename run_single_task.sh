@@ -7,7 +7,7 @@ python run_classifier.py \
     --dataset_config_name binary \
     --model_name_or_path bert-base-multilingual-cased \
     --tokenizer_name bert-base-multilingual-cased \
-    --logging_steps 200 \
+    --logging_steps 40 \
     --evaluation_strategy steps \
     --num_train_epochs 1 \
     --per_device_train_batch_size 32 \

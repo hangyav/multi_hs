@@ -1,5 +1,6 @@
 import csv
 import datasets
+from sklearn.model_selection import train_test_split
 
 
 _CITATION = """
@@ -66,15 +67,20 @@ class GermEval18(datasets.GeneratorBasedBuilder):
         return [
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
-                gen_kwargs={'filepath': dl_dir['train']}
+                gen_kwargs={'filepath': dl_dir['train'], 'split':'train'}
+            ),
+            datasets.SplitGenerator(
+                name=datasets.Split.VALIDATION,
+                gen_kwargs={'filepath': dl_dir['train'], 'split':'validation'}
             ),
             datasets.SplitGenerator(
                 name=datasets.Split.TEST,
-                gen_kwargs={'filepath': dl_dir['test']}
+                gen_kwargs={'filepath': dl_dir['test'], 'split': 'test'}
             ),
         ]
 
-    def _generate_examples(self, filepath):
+    def _generate_examples(self, filepath, split):
+        data = list()
         with open(filepath, encoding='utf-8') as fin:
             csv_reader = csv.reader(
                 fin,
@@ -88,8 +94,30 @@ class GermEval18(datasets.GeneratorBasedBuilder):
             for row in csv_reader:
                 text, label_binary, label_fine_grained = row
 
-                yield idx, {
+                item = {
                     'text': text,
-                    'label': label_binary if self.config.name == 'binary' else label_fine_grained,
+                    'label': (label_binary
+                              if self.config.name == 'binary'
+                              else label_fine_grained),
                 }
+                if split == 'test':
+                    yield idx, item
+                else:
+                    data.append(item)
                 idx += 1
+
+        if split != 'test':
+            train, valid = train_test_split(
+                data,
+                test_size=0.2,
+                random_state=0,
+                stratify=[item['label'] for item in data]
+            )
+
+            if split == 'train':
+                data = train
+            else:
+                data = valid
+
+            for idx, item in enumerate(data):
+                yield idx, item
