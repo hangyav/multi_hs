@@ -51,6 +51,8 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
+from src.data import sampling
+
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.17.0")
@@ -137,6 +139,12 @@ class DataTrainingArguments:
         default=None, metadata={"help": "A csv or a json file containing the validation data."}
     )
     test_file: Optional[str] = field(default=None, metadata={"help": "A csv or a json file containing the test data."})
+    train_sampling: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Data sampling for label imbalance. Options: balanced_over"
+        },
+    )
 
     def __post_init__(self):
         if self.task_name is not None:
@@ -538,6 +546,18 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
         train_dataset = raw_datasets["train"]
         if data_args.max_train_samples is not None:
             train_dataset = train_dataset.select(range(data_args.max_train_samples))
+
+        if data_args.train_sampling is not None:
+            if data_args.train_sampling == 'balanced_over':
+                train_dataset = sampling.balanced_random_oversample(
+                    dataset=train_dataset,
+                    label_col='label',
+                    random_state=training_args.seed,
+                    load_from_cache_file=not data_args.overwrite_cache,
+                )
+            else:
+                raise NotImplementedError(f'Unknown sampling method: {data_args.train_sampling}')
+            logger.info(f'Training dataset resampled with {data_args.train_sampling}')
 
     eval_dataset = None
     if training_args.do_eval:

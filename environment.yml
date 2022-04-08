@@ -56,6 +56,7 @@ dependencies:
   - idna=3.3=pyhd3eb1b0_0
   - importlib-metadata=4.11.3=py39h06a4308_0
   - importlib_metadata=4.11.3=hd8ed1ab_1
+  - iniconfig=1.1.1=pyhd3eb1b0_0
   - intel-openmp=2021.4.0=h06a4308_3561
   - ipython=8.2.0=py39h06a4308_0
   - jedi=0.18.1=py39h06a4308_1
@@ -113,16 +114,20 @@ dependencies:
   - pickleshare=0.7.5=pyhd3eb1b0_1003
   - pillow=9.0.1=py39h22f2fdc_0
   - pip=21.2.4=py39h06a4308_0
+  - pluggy=1.0.0=py39h06a4308_1
   - prompt-toolkit=3.0.20=pyhd3eb1b0_0
   - protobuf=3.16.0=py39he80948d_0
   - ptyprocess=0.7.0=pyhd3eb1b0_2
   - pure_eval=0.2.2=pyhd3eb1b0_0
+  - py=1.11.0=pyhd3eb1b0_0
   - pyarrow=4.0.0=py39h3ebc44c_3_cpu
   - pycparser=2.21=pyhd3eb1b0_0
   - pygments=2.11.2=pyhd3eb1b0_0
   - pyopenssl=22.0.0=pyhd3eb1b0_0
   - pyparsing=3.0.7=pyhd8ed1ab_0
   - pysocks=1.7.1=py39h06a4308_0
+  - pytest=7.1.1=py39h06a4308_0
+  - pytest-lazy-fixture=0.6.3=py_0
   - python=3.9.12=h12debd9_0
   - python-dateutil=2.8.2=pyhd8ed1ab_0
   - python-xxhash=2.0.2=py39h3811e60_0
@@ -141,6 +146,7 @@ dependencies:
   - stack_data=0.2.0=pyhd3eb1b0_0
   - tensorboard=2.0.0=pyhb38c66f_1
   - tk=8.6.11=h1ccaba5_0
+  - tomli=1.2.2=pyhd3eb1b0_0
   - torchaudio=0.11.0=py39_cu113
   - torchvision=0.12.0=py39_cu113
   - tqdm=4.64.0=pyhd8ed1ab_0
@@ -163,6 +169,7 @@ dependencies:
     - adapter-transformers==3.0.0
     - click==8.1.2
     - huggingface-hub==0.5.0
+    - imbalanced-learn==0.9.0
     - joblib==1.1.0
     - pyyaml==6.0
     - regex==2022.3.15
