@@ -21,6 +21,7 @@ import logging
 import os
 import random
 import sys
+import importlib
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -163,6 +164,9 @@ class DataTrainingArguments:
                 validation_extension == train_extension
             ), "`validation_file` should have the same extension (csv or json) as `train_file`."
 
+        if self.train_sampling is not None and self.train_sampling.lower() == 'none':
+            self.train_sampling = None
+
 
 @dataclass
 class ModelArguments:
@@ -291,7 +295,9 @@ def get_datasets(model_args, data_args, training_args):
     elif data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         raw_datasets = load_dataset(
-            f'src/data/{data_args.dataset_name}',
+            importlib.import_module(
+                f'src.data.{data_args.dataset_name}.{data_args.dataset_name}'
+            ).__file__,
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
         )
@@ -396,11 +402,12 @@ def get_models(model_args, data_args, training_args, adapter_args, num_labels,
     )
 
     task_name = data_args.task_name or f"{data_args.dataset_name}-{data_args.dataset_config_name}"
-    model.add_classification_head(
-        task_name,
-        num_labels=num_labels,
-        id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
-    )
+    if task_name not in model.config.prediction_heads:
+        model.add_classification_head(
+            task_name,
+            num_labels=num_labels,
+            id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
+        )
 
     # Setup adapters
     if adapter_args.train_adapter:
@@ -622,7 +629,11 @@ def main():
             #  load_metric("f1"),
             #  load_metric("precision"),
             #  load_metric("recall"),
-            load_metric("src/metrics/f1_report"),
+            load_metric(
+                importlib.import_module(
+                    "src.metrics.f1_report.f1_report"
+                ).__file__
+            ),
         ]
 
     # You can define your custom compute_metrics function. It takes an
