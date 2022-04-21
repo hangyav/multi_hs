@@ -41,7 +41,6 @@ from transformers import (
     EvalPrediction,
     HfArgumentParser,
     MultiLingAdapterArguments,
-    PretrainedConfig,
     Trainer,
     TrainingArguments,
     default_data_collator,
@@ -189,6 +188,7 @@ class ModelArguments:
         },
     )
 
+
 @dataclass
 class MyTrainingArguments(TrainingArguments):
     early_stopping_patience: int = field(
@@ -214,12 +214,27 @@ class MyTrainingArguments(TrainingArguments):
             self.load_best_model_at_end = True
 
 
+@dataclass
+class MyAdapterArguments(MultiLingAdapterArguments):
+    fuse_adapters: Optional[str] = field(
+        default=None,
+        metadata={"help": "Adapter names to fuse."}
+    )
+
+    def __post_init__(self):
+        if self.load_adapter is not None and len(self.load_adapter) > 0:
+            self.load_adapter = self.load_adapter.split(',')
+
+        if self.fuse_adapters is not None:
+            self.fuse_adapters = self.fuse_adapters.split(',')
+
+
 def setup():
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, MyTrainingArguments, MultiLingAdapterArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, MyTrainingArguments, MyAdapterArguments))
 
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
@@ -404,14 +419,17 @@ def get_models(model_args, data_args, training_args, adapter_args, num_labels,
             )
             # load a pre-trained from Hub if specified
             if adapter_args.load_adapter:
-                model.load_adapter(
-                    adapter_args.load_adapter,
-                    config=adapter_config,
-                    load_as=data_args.task_name,
-                )
+                for adapter in adapter_args.load_adapter:
+                    model.load_adapter(
+                        adapter,
+                        config=adapter_config,
+                        load_as=data_args.task_name if len(adapter_args.load_adapter) <=1 else None,
+                        with_head=adapter_args.fuse_adapters is None,
+                    )
             # otherwise, add a fresh adapter
             else:
                 model.add_adapter(data_args.task_name, config=adapter_config)
+
         # optionally load a pre-trained language adapter
         if adapter_args.load_lang_adapter:
             # resolve the language adapter config
@@ -429,14 +447,24 @@ def get_models(model_args, data_args, training_args, adapter_args, num_labels,
         else:
             lang_adapter_name = None
 
-        # Freeze all model weights except of those of this adapter
-        model.train_adapter([data_args.task_name])
-
-        # Set the adapters to be used in every forward pass
-        if lang_adapter_name:
-            model.set_active_adapters(ac.Stack(lang_adapter_name, data_args.task_name))
+        if adapter_args.fuse_adapters is not None:
+            adapter_setup = [adapter_args.fuse_adapters]
+            fusion_dir = os.path.join(training_args.output_dir, ','.join(adapter_setup[0]))
+            fusion_config_path = os.path.join(fusion_dir, 'adapter_fusion_config.json')
+            if os.path.exists(fusion_config_path):
+                model.load_adapter_fusion(fusion_dir)
+            else:
+                model.add_adapter_fusion(adapter_setup[0], 'dynamic')
+            model.train_adapter_fusion(adapter_setup)
         else:
-            model.set_active_adapters([data_args.task_name])
+            # Freeze all model weights except of those of this adapter
+            model.train_adapter([data_args.task_name])
+
+            # Set the adapters to be used in every forward pass
+            if lang_adapter_name:
+                model.set_active_adapters(ac.Stack(lang_adapter_name, data_args.task_name))
+            else:
+                model.set_active_adapters([data_args.task_name])
     else:
         if adapter_args.load_adapter or adapter_args.load_lang_adapter:
             raise ValueError(
@@ -655,6 +683,10 @@ def main():
             checkpoint = training_args.resume_from_checkpoint
         elif last_checkpoint is not None:
             checkpoint = last_checkpoint
+        # XXX there seems to be an but in AdapterTrainerCallback
+        # temporary fix is to change lines in transformers/adapters/trainer.py
+        # 269: fusion_models = getattr(self.trainer.model.config, "adapter_fusion_models", [])
+        # 273: self.trainer.model.load_adapter_fusion(fusion_dir)
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         metrics = train_result.metrics
         max_train_samples = (
