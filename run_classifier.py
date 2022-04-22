@@ -817,7 +817,14 @@ def main():
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
 
-        for task, dataset in eval_dataset.items():
+        for task_name, dataset_name, dataset_config_name in zip(
+            data_args.task_name,
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+        ):
+            task = f'{dataset_name}-{dataset_config_name}'
+            dataset = eval_dataset[task]
+
             metrics = trainer.evaluate(eval_dataset={task: dataset})
             metrics = {k: v for k, v in metrics.items() if 'MULTIAVG' not in k}
 
@@ -826,13 +833,20 @@ def main():
             )
             metrics["eval_samples"] = min(max_eval_samples, len(dataset))
 
-            trainer.log_metrics(f'validation_{task}', metrics)
-            trainer.save_metrics(f'validation_{task}', metrics)
+            trainer.log_metrics(f'validation_{task_name}', metrics)
+            trainer.save_metrics(f'validation_{task_name}', metrics)
 
     if training_args.do_predict:
         logger.info("*** Predict ***")
 
-        for task, dataset in predict_dataset.items():
+        for task_name, dataset_name, dataset_config_name in zip(
+            data_args.task_name,
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+        ):
+            task = f'{dataset_name}-{dataset_config_name}'
+            dataset = predict_dataset[task]
+
             _, label_list, is_regression = dataset_metadata[task]
             predict_res = trainer.predict({task: dataset}, metric_key_prefix="predict")
             predictions = predict_res.predictions[task]
@@ -840,15 +854,15 @@ def main():
             metrics = {k: v for k, v in metrics.items() if 'MULTIAVG' not in k}
 
             metrics["predict_samples"] = len(dataset)
-            trainer.log_metrics(task, metrics)
-            trainer.save_metrics(task, metrics)
+            trainer.log_metrics(task_name, metrics)
+            trainer.save_metrics(task_name, metrics)
 
             predictions = np.squeeze(predictions) if is_regression else np.argmax(predictions, axis=1)
 
-            output_predict_file = os.path.join(training_args.output_dir, f"{task}_predictions.txt")
+            output_predict_file = os.path.join(training_args.output_dir, f"{task_name}_predictions.txt")
             if trainer.is_world_process_zero():
                 with open(output_predict_file, "w") as writer:
-                    logger.info(f"***** Predict results {task} *****")
+                    logger.info(f"***** Predict results {task_name} *****")
                     writer.write("index\tprediction\n")
                     for index, item in enumerate(predictions):
                         if is_regression:
