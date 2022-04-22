@@ -3,8 +3,8 @@
 set -x
 
 python run_classifier.py \
-    --dataset_name germeval18 \
-    --dataset_config_name binary \
+    --dataset_name germeval18,germeval18 \
+    --dataset_config_name binary,fine_grained \
     --model_name_or_path bert-base-multilingual-cased \
     --tokenizer_name bert-base-multilingual-cased \
     --logging_steps 100 \
@@ -23,5 +23,5 @@ python run_classifier.py \
     --do_train \
     --do_eval \
     --do_predict \
-    --output_dir tmp/models/tmp_single \
-    --logging_dir tmp/models/tmp_single/log
+    --output_dir tmp/models/tmp_multi \
+    --logging_dir tmp/models/tmp_multi/log

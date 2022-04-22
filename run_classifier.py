@@ -22,18 +22,18 @@ import os
 import random
 import sys
 import importlib
+import numpy as np
 from dataclasses import dataclass, field
 from typing import Optional
+from functools import partial
 
 import datasets
-import numpy as np
 from datasets import load_dataset, load_metric
 
 import transformers
 import transformers.adapters.composition as ac
 from transformers import (
     AdapterConfig,
-    AdapterTrainer,
     AutoAdapterModel,
     AutoConfig,
     AutoTokenizer,
@@ -41,7 +41,6 @@ from transformers import (
     EvalPrediction,
     HfArgumentParser,
     MultiLingAdapterArguments,
-    Trainer,
     TrainingArguments,
     default_data_collator,
     set_seed,
@@ -52,6 +51,12 @@ from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
 from src.data import sampling
+from src.modeling import (
+    MultiTaskModelWrapper,
+    HeadSelectionWrapper,
+    AdapterSelectionWrapper,
+)
+from src.training import MultitaskAdapterTrainer, MultitaskTrainer
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -137,8 +142,18 @@ class DataTrainingArguments:
     def __post_init__(self):
         assert self.dataset_name is not None and self.dataset_config_name is not None
 
+        self.dataset_name = self.dataset_name.split(',')
+        self.dataset_config_name = self.dataset_config_name.split(',')
+        assert len(self.dataset_name) == len(self.dataset_config_name)
+
         if self.task_name is None:
-            self.task_name = f'{self.dataset_name}-{self.dataset_config_name}'
+            self.task_name = [
+                f'{dataset_name}-{dataset_config_name}'
+                for dataset_name, dataset_config_name in zip(self.dataset_name, self.dataset_config_name)
+            ]
+        else:
+            self.task_name = self.task_name.split(',')
+            assert len(self.dataset_name) == len(self.task_name)
 
         if self.train_file is not None:
             train_extension = self.train_file.split(".")[-1]
@@ -204,8 +219,12 @@ class MyTrainingArguments(TrainingArguments):
         },
     )
     metric_for_best_model: Optional[str] = field(
-        default='eval_macro_averaged_F1',
+        default='eval_macro_averaged_F1_MULTIAVG',
         metadata={"help": "The metric to use to compare two models."}
+    )
+    freeze_model_core: bool = field(
+        default=True,
+        metadata={"help": "Whether to freeze the core LM."},
     )
 
     def __post_init__(self):
@@ -228,6 +247,12 @@ class MyAdapterArguments(MultiLingAdapterArguments):
         if self.fuse_adapters is not None:
             self.fuse_adapters = self.fuse_adapters.split(',')
 
+        if self.load_lang_adapter is not None:
+            self.load_lang_adapter = self.load_lang_adapter.split(',')
+            assert self.language is not None
+            self.language = self.language.split(',')
+            assert len(self.load_lang_adapter) == len(self.language)
+
 
 def setup():
     # See all possible arguments in src/transformers/training_args.py
@@ -244,6 +269,9 @@ def setup():
         )
     else:
         model_args, data_args, training_args, adapter_args = parser.parse_args_into_dataclasses()
+
+    assert adapter_args.load_lang_adapter is None or len(adapter_args.load_lang_adapter) == len(data_args.task_name)
+    assert adapter_args.fuse_adapters is None or len(data_args.task_name) == 1
 
     # Setup logging
     logging.basicConfig(
@@ -270,6 +298,7 @@ def setup():
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
+    np.random.seed(training_args.seed)
 
     return model_args, data_args, training_args, adapter_args
 
@@ -288,13 +317,16 @@ def get_datasets(model_args, data_args, training_args):
     # one local process can concurrently download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        raw_datasets = load_dataset(
-            importlib.import_module(
-                f'src.data.{data_args.dataset_name}.{data_args.dataset_name}'
-            ).__file__,
-            data_args.dataset_config_name,
-            cache_dir=model_args.cache_dir,
-        )
+        raw_datasets = {
+            f'{dataset_name}-{dataset_config_name}': load_dataset(
+                importlib.import_module(
+                    f'src.data.{dataset_name}.{dataset_name}'
+                ).__file__,
+                dataset_config_name,
+                cache_dir=model_args.cache_dir,
+            )
+            for dataset_name, dataset_config_name in zip(data_args.dataset_name, data_args.dataset_config_name)
+        }
     else:
         # TODO need to set the right adapter name and handle label2id conversion
         raise NotImplementedError('Not supported currently.')
@@ -327,22 +359,78 @@ def get_datasets(model_args, data_args, training_args):
     # See more about loading any type of standard or custom dataset at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
+    # num_labels, label_list, is_regression
+    dataset_metadata = dict()
+
     # Labels
     # Trying to have good defaults here, don't hesitate to tweak to your needs.
-    is_regression = raw_datasets["train"].features["label"].dtype in ["float32", "float64"]
-    if is_regression:
-        num_labels = 1
+    for dataset_name, dataset in raw_datasets.items():
+        is_regression = dataset["train"].features["label"].dtype in ["float32", "float64"]
+        if is_regression:
+            num_labels = 1
+            label_list = None
+        else:
+            # A useful fast method:
+            # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.unique
+            label_list = dataset["train"].features["label"].names
+            num_labels = len(label_list)
+
+        dataset_metadata[dataset_name] = (num_labels, label_list, is_regression)
+
+    return raw_datasets, dataset_metadata
+
+
+def wrap_model(model, data_args, training_args, adapter_args,
+               lang_adapter_names, adapter_setup):
+    if not adapter_args.train_adapter:
+        head_dict = {
+            f'{dataset_name}-{dataset_config_name}': task_name
+            for task_name, dataset_name, dataset_config_name in zip(
+                data_args.task_name,
+                data_args.dataset_name,
+                data_args.dataset_config_name,
+            )
+        }
+        HeadSelectionWrapper(model, head_dict)
     else:
-        # A useful fast method:
-        # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.unique
-        label_list = raw_datasets["train"].features["label"].names
-        num_labels = len(label_list)
+        if adapter_args.fuse_adapters is not None:
+            # there's only one task in this case.
+            model.train_adapter_fusion(adapter_setup)
+            MultiTaskModelWrapper(model)
+        else:
+            adapter_dict = {
+                f'{dataset_name}-{dataset_config_name}': [task_name]
+                for task_name, dataset_name, dataset_config_name in zip(
+                    data_args.task_name,
+                    data_args.dataset_name,
+                    data_args.dataset_config_name,
+                )
+            }
+            active_adapter_dict = None
+            if lang_adapter_names is not None:
+                active_adapter_dict = {
+                    f'{dataset_name}-{dataset_config_name}': ac.Stack(lang_adapter, task_name)
+                    for task_name, dataset_name, dataset_config_name, lang_adapter in zip(
+                        data_args.task_name,
+                        data_args.dataset_name,
+                        data_args.dataset_config_name,
+                        lang_adapter_names,
+                    )
+                }
 
-    return raw_datasets, num_labels, label_list, is_regression
+            # We need to activate any adapter now
+            # Freeze all model weights except of those of this adapter
+            model.train_adapter(next(adapter_dict.values().__iter__()))
+            # Set the adapters to be used in every forward pass
+            tmp_dict = active_adapter_dict if active_adapter_dict else adapter_dict
+            model.set_active_adapters(next(tmp_dict.values().__iter__()))
+
+            AdapterSelectionWrapper(model, adapter_dict, active_adapter_dict,
+                                    training_args.freeze_model_core)
 
 
-def get_models(model_args, data_args, training_args, adapter_args, num_labels,
-               label_list):
+def get_models(model_args, data_args, training_args, adapter_args,
+               dataset_metadata):
     # Detecting last checkpoint.
     last_checkpoint = None
     if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
@@ -364,18 +452,16 @@ def get_models(model_args, data_args, training_args, adapter_args, num_labels,
     # one local process can concurrently download model & vocab.
     config = AutoConfig.from_pretrained(
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
-        num_labels=num_labels,
-        finetuning_task=data_args.task_name,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
     if config.finetuning_task is None:
-        config.finetuning_task = [data_args.finetuning_task]
+        config.finetuning_task = data_args.task_name
     elif type(config.finetuning_task) == str:
-        config.finetuning_task = [config.finetuning_task, data_args.task_name]
+        config.finetuning_task = [config.finetuning_task] + data_args.task_name
     else:
-        config.finetuning_task.append(data_args.task_name)
+        config.finetuning_task.extend(data_args.task_name)
 
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
@@ -394,41 +480,42 @@ def get_models(model_args, data_args, training_args, adapter_args, num_labels,
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    if data_args.task_name not in model.config.prediction_heads:
-        # TODO model.load_head() should be used if trained head exists. However,
-        # model.load_adapter() seems to do this if head and adapter are at the
-        # same path, so I leave this as is for now.
-        model.add_classification_head(
-            data_args.task_name,
-            num_labels=num_labels,
-            id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
-        )
-
-    # Activate the right head
-    model.active_head = data_args.task_name
+    for i, task_name in enumerate(data_args.task_name):
+        dataset_name = f'{data_args.dataset_name[i]}-{data_args.dataset_config_name[i]}'
+        num_labels, label_list, _ = dataset_metadata[dataset_name]
+        if task_name not in model.config.prediction_heads:
+            # TODO model.load_head() should be used if trained head exists and
+            # adapters are used. However, model.load_adapter() seems to do this if
+            # head and adapter are at the same path, so I leave this as is for now.
+            model.add_classification_head(
+                task_name,
+                num_labels=num_labels,
+                id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
+            )
 
     # Setup adapters
+    lang_adapter_names = None
+    adapter_setup = None
     if adapter_args.train_adapter:
-        # check if adapter already exists, otherwise add it
-        if data_args.task_name not in model.config.adapters:
-            # resolve the adapter config
-            adapter_config = AdapterConfig.load(
-                adapter_args.adapter_config,
-                non_linearity=adapter_args.adapter_non_linearity,
-                reduction_factor=adapter_args.adapter_reduction_factor,
-            )
-            # load a pre-trained from Hub if specified
-            if adapter_args.load_adapter:
-                for adapter in adapter_args.load_adapter:
-                    model.load_adapter(
-                        adapter,
-                        config=adapter_config,
-                        load_as=data_args.task_name if len(adapter_args.load_adapter) <=1 else None,
-                        with_head=adapter_args.fuse_adapters is None,
-                    )
-            # otherwise, add a fresh adapter
-            else:
-                model.add_adapter(data_args.task_name, config=adapter_config)
+        # resolve the adapter config
+        adapter_config = AdapterConfig.load(
+            adapter_args.adapter_config,
+            non_linearity=adapter_args.adapter_non_linearity,
+            reduction_factor=adapter_args.adapter_reduction_factor,
+        )
+        # load a pre-trained from Hub if specified
+        if adapter_args.load_adapter:
+            for adapter in adapter_args.load_adapter:
+                model.load_adapter(
+                    adapter,
+                    config=adapter_config,
+                    load_as=data_args.task_name if len(adapter_args.load_adapter) <=1 else None,
+                    with_head=adapter_args.fuse_adapters is None,
+                )
+        # otherwise, add a fresh adapter
+        else:
+            for task_name in data_args.task_name:
+                model.add_adapter(task_name, config=adapter_config)
 
         # optionally load a pre-trained language adapter
         if adapter_args.load_lang_adapter:
@@ -439,13 +526,14 @@ def get_models(model_args, data_args, training_args, adapter_args, num_labels,
                 reduction_factor=adapter_args.lang_adapter_reduction_factor,
             )
             # load the language adapter from Hub
-            lang_adapter_name = model.load_adapter(
-                adapter_args.load_lang_adapter,
-                config=lang_adapter_config,
-                load_as=adapter_args.language,
-            )
-        else:
-            lang_adapter_name = None
+            lang_adapter_names = [
+                model.load_adapter(
+                    lang_adapter,
+                    config=lang_adapter_config,
+                    load_as=lang,
+                )
+                for lang_adapter, lang in zip(adapter_args.load_lang_adapter, adapter_args.language)
+            ]
 
         if adapter_args.fuse_adapters is not None:
             adapter_setup = [adapter_args.fuse_adapters]
@@ -455,16 +543,6 @@ def get_models(model_args, data_args, training_args, adapter_args, num_labels,
                 model.load_adapter_fusion(fusion_dir)
             else:
                 model.add_adapter_fusion(adapter_setup[0], 'dynamic')
-            model.train_adapter_fusion(adapter_setup)
-        else:
-            # Freeze all model weights except of those of this adapter
-            model.train_adapter([data_args.task_name])
-
-            # Set the adapters to be used in every forward pass
-            if lang_adapter_name:
-                model.set_active_adapters(ac.Stack(lang_adapter_name, data_args.task_name))
-            else:
-                model.set_active_adapters([data_args.task_name])
     else:
         if adapter_args.load_adapter or adapter_args.load_lang_adapter:
             raise ValueError(
@@ -472,25 +550,37 @@ def get_models(model_args, data_args, training_args, adapter_args, num_labels,
                 "Use --train_adapter to enable adapter training"
             )
 
+    wrap_model(model, data_args, training_args, adapter_args,
+               lang_adapter_names, adapter_setup)
+
+    if adapter_args.fuse_adapters is None:
+        # things get messy if we freeze with fusion. It is frozen anyways.
+        # Unfreezing with fusion doesn't make too much sense probably.
+        model.freeze_model(training_args.freeze_model_core)
+
     return model, tokenizer, config, last_checkpoint
 
 
 def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
-                    training_args, num_labels, label_list, is_regression):
+                    training_args):
     # Preprocessing the datasets
     # Again, we try to have some nice defaults but don't hesitate to tweak
     # to your use case.
-    non_label_column_names = [name for name in raw_datasets["train"].column_names if name != "label"]
-    if "sentence1" in non_label_column_names and "sentence2" in non_label_column_names:
-        sentence1_key, sentence2_key = "sentence1", "sentence2"
-    elif 'text' in non_label_column_names:
-        sentence1_key, sentence2_key = 'text', None
-    else:
-        if len(non_label_column_names) >= 2:
-            raise NotImplementedError('This is not supported at the moment!')
-            sentence1_key, sentence2_key = non_label_column_names[:2]
+    sentence_keys_dict = dict()
+    for dataset_name, dataset in raw_datasets.items():
+        non_label_column_names = [name for name in dataset["train"].column_names if name != "label"]
+        if "sentence1" in non_label_column_names and "sentence2" in non_label_column_names:
+            sentence1_key, sentence2_key = "sentence1", "sentence2"
+        elif 'text' in non_label_column_names:
+            sentence1_key, sentence2_key = 'text', None
         else:
-            sentence1_key, sentence2_key = non_label_column_names[0], None
+            if len(non_label_column_names) >= 2:
+                raise NotImplementedError('This is not supported at the moment!')
+                sentence1_key, sentence2_key = non_label_column_names[:2]
+            else:
+                sentence1_key, sentence2_key = non_label_column_names[0], None
+
+        sentence_keys_dict[dataset_name] = [sentence1_key, sentence2_key]
 
     # Padding strategy
     if data_args.pad_to_max_length:
@@ -507,7 +597,7 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
         )
     max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
 
-    def preprocess_function(examples):
+    def preprocess_function(sentence1_key, sentence2_key, examples):
         # Tokenize the texts
         args = (
             (examples[sentence1_key],) if sentence2_key is None else (examples[sentence1_key], examples[sentence2_key])
@@ -521,57 +611,73 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
         return result
 
     with training_args.main_process_first(desc="dataset map pre-processing"):
-        raw_datasets = raw_datasets.map(
-            preprocess_function,
-            batched=True,
-            load_from_cache_file=not data_args.overwrite_cache,
-            desc="Running tokenizer on dataset",
-        )
+        raw_datasets = {
+            dataset_name: dataset.map(
+                partial(preprocess_function, *sentence_keys_dict[dataset_name]),
+                batched=True,
+                load_from_cache_file=not data_args.overwrite_cache,
+                desc=f"Running tokenizer on dataset: {dataset_name}",
+            )
+            for dataset_name, dataset in raw_datasets.items()
+        }
 
     train_dataset = None
     if training_args.do_train:
-        if "train" not in raw_datasets:
-            raise ValueError("--do_train requires a train dataset")
-        train_dataset = raw_datasets["train"]
-        if data_args.max_train_samples is not None:
-            train_dataset = train_dataset.select(range(data_args.max_train_samples))
+        train_dataset = dict()
+        for dataset_name, dataset in raw_datasets.items():
+            if "train" not in dataset:
+                raise ValueError(f"--do_train requires a train dataset in {dataset_name}")
+            train_dataset_tmp = dataset["train"]
+            if data_args.max_train_samples is not None:
+                train_dataset_tmp = train_dataset_tmp.select(range(data_args.max_train_samples))
 
-        if data_args.train_sampling is not None:
-            if data_args.train_sampling == 'balanced_over':
-                train_dataset = sampling.balanced_random_oversample(
-                    dataset=train_dataset,
-                    label_col='label',
-                    random_state=training_args.seed,
-                    load_from_cache_file=not data_args.overwrite_cache,
-                )
-            else:
-                raise NotImplementedError(f'Unknown sampling method: {data_args.train_sampling}')
-            logger.info(f'Training dataset resampled with {data_args.train_sampling}')
+            if data_args.train_sampling is not None:
+                if data_args.train_sampling == 'balanced_over':
+                    train_dataset_tmp = sampling.balanced_random_oversample(
+                        dataset=train_dataset_tmp,
+                        label_col='label',
+                        random_state=training_args.seed,
+                        load_from_cache_file=not data_args.overwrite_cache,
+                    )
+                else:
+                    raise NotImplementedError(f'Unknown sampling method: {data_args.train_sampling}')
+                logger.info(f'Training dataset resampled with {data_args.train_sampling}')
+
+            train_dataset[dataset_name] = train_dataset_tmp
 
     eval_dataset = None
     if training_args.do_eval:
-        if "validation" not in raw_datasets:
-            raise ValueError("--do_eval requires a validation dataset")
+        eval_dataset = dict()
+        for dataset_name, dataset in raw_datasets.items():
+            if "validation" not in dataset:
+                raise ValueError(f"--do_eval requires a validation dataset in {dataset_name}")
 
-        eval_dataset = raw_datasets["validation"]
+            eval_dataset_tmp = dataset["validation"]
 
-        if data_args.max_eval_samples is not None:
-            eval_dataset = eval_dataset.select(range(data_args.max_eval_samples))
+            if data_args.max_eval_samples is not None:
+                eval_dataset_tmp = eval_dataset_tmp.select(range(data_args.max_eval_samples))
+
+            eval_dataset[dataset_name] = eval_dataset_tmp
 
     predict_dataset = None
     if training_args.do_predict:
-        if "test" not in raw_datasets:
-            raise ValueError("--do_predict requires a test dataset")
+        predict_dataset = dict()
+        for dataset_name, dataset in raw_datasets.items():
+            if "test" not in dataset:
+                raise ValueError(f"--do_predict requires a test dataset in {dataset_name}")
 
-        predict_dataset = raw_datasets["test"]
+            predict_dataset_tmp = dataset["test"]
 
-        if data_args.max_predict_samples is not None:
-            predict_dataset = predict_dataset.select(range(data_args.max_predict_samples))
+            if data_args.max_predict_samples is not None:
+                predict_dataset_tmp = predict_dataset_tmp.select(range(data_args.max_predict_samples))
+
+            predict_dataset[dataset_name] = predict_dataset_tmp
 
     # Log a few random samples from the training set:
     if training_args.do_train:
-        for index in random.sample(range(len(train_dataset)), 3):
-            logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
+        for dataset_name, dataset in train_dataset.items():
+            for index in random.sample(range(len(dataset)), 1):
+                logger.info(f"Sample {index} of the training set in {dataset_name}: {dataset[index]}.")
 
     return train_dataset, eval_dataset, predict_dataset
 
@@ -579,7 +685,7 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
 def main():
     model_args, data_args, training_args, adapter_args = setup()
 
-    raw_datasets, num_labels, label_list, is_regression = get_datasets(
+    raw_datasets, dataset_metadata = get_datasets(
         model_args,
         data_args,
         training_args
@@ -590,8 +696,7 @@ def main():
         data_args,
         training_args,
         adapter_args,
-        num_labels,
-        label_list
+        dataset_metadata,
     )
 
     train_dataset, eval_dataset, predict_dataset = preprocess_data(
@@ -601,9 +706,6 @@ def main():
         config,
         data_args,
         training_args,
-        num_labels,
-        label_list,
-        is_regression
     )
 
     # Get the metric function
@@ -622,9 +724,11 @@ def main():
     # You can define your custom compute_metrics function. It takes an
     # `EvalPrediction` object (a namedtuple with a predictions and label_ids
     # field) and has to return a dictionary string to float.
-    def compute_metrics(p: EvalPrediction):
+    def compute_metrics(p: EvalPrediction, dataset_name: str):
+        _, label_list, is_regression = dataset_metadata[dataset_name]
         preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
         preds = np.squeeze(preds) if is_regression else np.argmax(preds, axis=1)
+
         if is_regression:
             return {"mse": ((preds - p.label_ids) ** 2).mean().item()}
         else:
@@ -664,7 +768,7 @@ def main():
             training_args.early_stopping_threshold,
         ))
 
-    trainer_class = AdapterTrainer if adapter_args.train_adapter else Trainer
+    trainer_class = MultitaskAdapterTrainer if adapter_args.train_adapter else MultitaskTrainer
     trainer = trainer_class(
         model=model,
         args=training_args,
@@ -690,7 +794,9 @@ def main():
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         metrics = train_result.metrics
         max_train_samples = (
-            data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
+            data_args.max_train_samples * len(train_dataset)
+            if data_args.max_train_samples is not None else
+            sum([len(dataset) for dataset in train_dataset])
         )
         metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
@@ -706,21 +812,19 @@ def main():
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
+
     # Evaluation
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
 
-        # Loop to handle MNLI double evaluation (matched, mis-matched)
-        tasks = [data_args.task_name]
-        eval_datasets = [eval_dataset]
-
-        for eval_dataset, task in zip(eval_datasets, tasks):
-            metrics = trainer.evaluate(eval_dataset=eval_dataset)
+        for task, dataset in eval_dataset.items():
+            metrics = trainer.evaluate(eval_dataset={task: dataset})
+            metrics = {k: v for k, v in metrics.items() if 'MULTIAVG' not in k}
 
             max_eval_samples = (
-                data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+                data_args.max_eval_samples if data_args.max_eval_samples is not None else len(dataset)
             )
-            metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+            metrics["eval_samples"] = min(max_eval_samples, len(dataset))
 
             trainer.log_metrics(f'validation_{task}', metrics)
             trainer.save_metrics(f'validation_{task}', metrics)
@@ -728,16 +832,14 @@ def main():
     if training_args.do_predict:
         logger.info("*** Predict ***")
 
-        # Loop to handle MNLI double evaluation (matched, mis-matched)
-        tasks = [data_args.task_name]
-        predict_datasets = [predict_dataset]
-
-        for predict_dataset, task in zip(predict_datasets, tasks):
-            predict_res = trainer.predict(predict_dataset, metric_key_prefix="predict")
-            predictions = predict_res.predictions
+        for task, dataset in predict_dataset.items():
+            _, label_list, is_regression = dataset_metadata[task]
+            predict_res = trainer.predict({task: dataset}, metric_key_prefix="predict")
+            predictions = predict_res.predictions[task]
             metrics = predict_res.metrics
+            metrics = {k: v for k, v in metrics.items() if 'MULTIAVG' not in k}
 
-            metrics["predict_samples"] = len(predict_dataset)
+            metrics["predict_samples"] = len(dataset)
             trainer.log_metrics(task, metrics)
             trainer.save_metrics(task, metrics)
 

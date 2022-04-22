@@ -14,16 +14,17 @@ python run_classifier.py \
     --num_train_epochs 1000 \
     --early_stopping_patience 2 \
     --save_total_limit 2 \
-    --per_device_train_batch_size 32 \
+    --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 128 \
+    --gradient_accumulation_steps 2 \
     --train_adapter \
-    --train_sampling balanced_over \
+    --train_sampling none \
+    --freeze_model_core 1 \
     --overwrite_output_dir \
     --do_train \
     --do_eval \
     --do_predict \
-    --load_adapter tmp/models/tmp/germeval18-binary,tmp/models/tmp/germeval18-fine_grained \
+    --load_adapter tmp/models/tmp_single_adapter/germeval18-binary,tmp/models/tmp_single_adapter/germeval18-fine_grained \
     --fuse_adapters germeval18-binary,germeval18-fine_grained \
-    --task_name  germeval18-binary,germeval18-fine_grained \
-    --output_dir tmp/models/tmp_fusion \
-    --logging_dir tmp/models/tmp_fusion/log
+    --output_dir tmp/models/tmp_single_fusion \
+    --logging_dir tmp/models/tmp_single_fusion/log
