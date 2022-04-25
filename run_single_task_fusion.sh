@@ -24,7 +24,7 @@ python run_classifier.py \
     --do_train \
     --do_eval \
     --do_predict \
-    --load_adapter tmp/models/tmp_single_adapter/germeval18-binary,tmp/models/tmp_single_adapter/germeval18-fine_grained \
-    --fuse_adapters germeval18-binary,germeval18-fine_grained \
+    --load_adapter tmp/models/tmp_single_adapter/germeval18-binary tmp/models/tmp_single_adapter/germeval18-fine_grained \
+    --fuse_adapters germeval18-binary germeval18-fine_grained \
     --output_dir tmp/models/tmp_single_fusion \
     --logging_dir tmp/models/tmp_single_fusion/log

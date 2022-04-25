@@ -24,7 +24,7 @@ import sys
 import importlib
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, List
 from functools import partial
 
 import datasets
@@ -77,14 +77,14 @@ class DataTrainingArguments:
     the command line.
     """
 
-    task_name: Optional[str] = field(
+    task_name: Optional[List[str]] = field(
         default=None,
         metadata={"help": "The name of the task. Just meta-info."},
     )
-    dataset_name: Optional[str] = field(
+    dataset_name: Optional[List[str]] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
-    dataset_config_name: Optional[str] = field(
+    dataset_config_name: Optional[List[str]] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
     max_seq_length: int = field(
@@ -141,9 +141,6 @@ class DataTrainingArguments:
 
     def __post_init__(self):
         assert self.dataset_name is not None and self.dataset_config_name is not None
-
-        self.dataset_name = self.dataset_name.split(',')
-        self.dataset_config_name = self.dataset_config_name.split(',')
         assert len(self.dataset_name) == len(self.dataset_config_name)
 
         if self.task_name is None:
@@ -152,7 +149,6 @@ class DataTrainingArguments:
                 for dataset_name, dataset_config_name in zip(self.dataset_name, self.dataset_config_name)
             ]
         else:
-            self.task_name = self.task_name.split(',')
             assert len(self.dataset_name) == len(self.task_name)
 
         if self.train_file is not None:
@@ -235,22 +231,21 @@ class MyTrainingArguments(TrainingArguments):
 
 @dataclass
 class MyAdapterArguments(MultiLingAdapterArguments):
-    fuse_adapters: Optional[str] = field(
+    load_adapter: Optional[List[str]] = field(
+        default=None, metadata={"help": "Pre-trained adapter module to be loaded from Hub."}
+    )
+    fuse_adapters: Optional[List[str]] = field(
         default=None,
         metadata={"help": "Adapter names to fuse."}
     )
+    load_lang_adapter: Optional[List[str]] = field(
+        default=None, metadata={"help": "Pre-trained language adapter module to be loaded from Hub."}
+    )
+    language: Optional[List[str]] = field(default=None, metadata={"help": "The training language, e.g. 'en' for English."})
 
     def __post_init__(self):
-        if self.load_adapter is not None and len(self.load_adapter) > 0:
-            self.load_adapter = self.load_adapter.split(',')
-
-        if self.fuse_adapters is not None:
-            self.fuse_adapters = self.fuse_adapters.split(',')
-
         if self.load_lang_adapter is not None:
-            self.load_lang_adapter = self.load_lang_adapter.split(',')
             assert self.language is not None
-            self.language = self.language.split(',')
             assert len(self.load_lang_adapter) == len(self.language)
 
 
@@ -497,6 +492,12 @@ def get_models(model_args, data_args, training_args, adapter_args,
     lang_adapter_names = None
     adapter_setup = None
     if adapter_args.train_adapter:
+        for adapter in list(model.config.adapters.adapters.keys()):
+            # we delete existing adapters because we load externals anyways
+            # if we don't do this we get an error message that some weights are
+            # not used when loading adapter.
+            model.delete_adapter(adapter)
+
         # resolve the adapter config
         adapter_config = AdapterConfig.load(
             adapter_args.adapter_config,
@@ -509,7 +510,7 @@ def get_models(model_args, data_args, training_args, adapter_args,
                 model.load_adapter(
                     adapter,
                     config=adapter_config,
-                    load_as=data_args.task_name if len(adapter_args.load_adapter) <=1 else None,
+                    load_as=data_args.task_name[0] if len(adapter_args.load_adapter) <=1 else None,
                     with_head=adapter_args.fuse_adapters is None,
                 )
         # otherwise, add a fresh adapter

@@ -3,8 +3,8 @@
 set -x
 
 python run_classifier.py \
-    --dataset_name germeval18,germeval18 \
-    --dataset_config_name binary,fine_grained \
+    --dataset_name germeval18 germeval18 \
+    --dataset_config_name binary fine_grained \
     --model_name_or_path bert-base-multilingual-cased \
     --tokenizer_name bert-base-multilingual-cased \
     --logging_steps 100 \
