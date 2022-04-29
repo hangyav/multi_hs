@@ -28,6 +28,7 @@ python run_classifier.py \
     --do_train \
     --do_eval \
     --do_predict \
+    --do_visualize \
     --load_adapter tmp/models/tmp_multi_adapter/germeval18-binary tmp/models/tmp_multi_adapter/germeval18-fine_grained \
     --fuse_adapters germeval18-binary germeval18-fine_grained \
     --task_name germeval18-binary,germeval18-fine_grained \

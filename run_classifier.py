@@ -57,6 +57,7 @@ from src.modeling import (
     AdapterSelectionWrapper,
 )
 from src.training import MultitaskAdapterTrainer, MultitaskTrainer
+from src.visualization import get_averaged_fusion_attentions, visualize_and_save
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -220,6 +221,10 @@ class MyTrainingArguments(TrainingArguments):
     )
     freeze_model_core: bool = field(
         default=True,
+        metadata={"help": "Whether to freeze the core LM."},
+    )
+    do_visualize: bool = field(
+        default=False,
         metadata={"help": "Whether to freeze the core LM."},
     )
 
@@ -871,6 +876,56 @@ def main():
                         else:
                             item = label_list[item]
                             writer.write(f"{index}\t{item}\n")
+
+    if training_args.do_visualize:
+        logger.info("*** Generating figures ***")
+
+        assert adapter_args.fuse_adapters
+
+        model.eval()
+
+        fusion_attentions = dict()
+
+        for task_name, dataset_name, dataset_config_name in zip(
+            data_args.task_name,
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+        ):
+            task = f'{dataset_name}-{dataset_config_name}'
+            dataset = eval_dataset[task]
+
+            _, label_list, is_regression = dataset_metadata[task]
+
+            attentions = get_averaged_fusion_attentions(
+                trainer,
+                ','.join(adapter_args.fuse_adapters),
+                eval_dataset={task: dataset}
+            )
+            fusion_attentions[task_name] = attentions
+
+            visualize_and_save(
+                attentions,
+                os.path.join(
+                    training_args.output_dir,
+                    f'{task_name}_fusion_per_layer_weights.pdf'
+                ),
+                xticklabels=adapter_args.fuse_adapters,
+                yticklabels=[f'layer_{i}' for i in range(attentions.shape[0])],
+            )
+
+        aggregated_fusion_attentions = np.array([
+            fusion_attentions[task_name].mean(axis=0)
+            for task_name in data_args.task_name
+        ])
+        visualize_and_save(
+            aggregated_fusion_attentions,
+            os.path.join(
+                training_args.output_dir,
+                'aggregated_fusion_weights.pdf'
+            ),
+            xticklabels=adapter_args.fuse_adapters,
+            yticklabels=data_args.task_name,
+        )
 
 
 def _mp_fn(index):

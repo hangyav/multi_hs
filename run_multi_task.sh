@@ -12,7 +12,7 @@ python run_classifier.py \
     --evaluation_strategy steps \
     --save_strategy steps \
     --num_train_epochs 1000 \
-    --early_stopping_patience 2 \
+    --early_stopping_patience 20 \
     --save_total_limit 2 \
     --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 128 \
