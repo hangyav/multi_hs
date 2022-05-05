@@ -27,8 +27,10 @@ from dataclasses import dataclass, field
 from typing import Optional, List
 from functools import partial
 
+from sklearn.model_selection import train_test_split
+
 import datasets
-from datasets import load_dataset, load_metric
+from datasets import load_dataset, load_metric, Dataset
 
 import transformers
 import transformers.adapters.composition as ac
@@ -163,6 +165,13 @@ class DataTrainingArguments:
 
         if self.train_sampling is not None and self.train_sampling.lower() == 'none':
             self.train_sampling = None
+
+        if self.max_train_samples is not None and self.max_train_samples == -1:
+            self.max_train_samples = None
+        if self.max_eval_samples is not None and self.max_eval_samples == -1:
+            self.max_eval_samples = None
+        if self.max_predict_samples is not None and self.max_predict_samples == -1:
+            self.max_predict_samples = None
 
 
 @dataclass
@@ -567,6 +576,16 @@ def get_models(model_args, data_args, training_args, adapter_args,
     return model, tokenizer, config, last_checkpoint
 
 
+def random_select(dataset, num_sample, seed=0):
+    dataset, _ = train_test_split(
+            dataset,
+            train_size=num_sample,
+            random_state=seed,
+            stratify=[item['label'] for item in dataset]
+    )
+    return Dataset.from_dict(dataset)
+
+
 def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
                     training_args):
     # Preprocessing the datasets
@@ -635,7 +654,11 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
                 raise ValueError(f"--do_train requires a train dataset in {dataset_name}")
             train_dataset_tmp = dataset["train"]
             if data_args.max_train_samples is not None:
-                train_dataset_tmp = train_dataset_tmp.select(range(data_args.max_train_samples))
+                train_dataset_tmp = random_select(
+                    train_dataset_tmp,
+                    data_args.max_train_samples,
+                    training_args.seed,
+                )
 
             if data_args.train_sampling is not None:
                 if data_args.train_sampling == 'balanced_over':
@@ -661,7 +684,11 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
             eval_dataset_tmp = dataset["validation"]
 
             if data_args.max_eval_samples is not None:
-                eval_dataset_tmp = eval_dataset_tmp.select(range(data_args.max_eval_samples))
+                eval_dataset_tmp = random_select(
+                    eval_dataset_tmp,
+                    data_args.max_eval_samples,
+                    training_args.seed,
+                )
 
             eval_dataset[dataset_name] = eval_dataset_tmp
 
@@ -675,7 +702,11 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
             predict_dataset_tmp = dataset["test"]
 
             if data_args.max_predict_samples is not None:
-                predict_dataset_tmp = predict_dataset_tmp.select(range(data_args.max_predict_samples))
+                predict_dataset_tmp = random_select(
+                    predict_dataset_tmp,
+                    data_args.max_predict_samples,
+                    training_args.seed,
+                )
 
             predict_dataset[dataset_name] = predict_dataset_tmp
 
