@@ -27,10 +27,8 @@ from dataclasses import dataclass, field
 from typing import Optional, List
 from functools import partial
 
-from sklearn.model_selection import train_test_split
-
 import datasets
-from datasets import load_dataset, load_metric, Dataset
+from datasets import load_dataset, load_metric
 
 import transformers
 import transformers.adapters.composition as ac
@@ -53,6 +51,7 @@ from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
 from src.data import sampling
+from src.data.utils import reduce_dataset_if_needed
 from src.modeling import (
     MultiTaskModelWrapper,
     HeadSelectionWrapper,
@@ -127,6 +126,9 @@ class DataTrainingArguments:
             "help": "For debugging purposes or quicker training, truncate the number of prediction examples to this "
             "value if set."
         },
+    )
+    data_selector_method: Optional[str] = field(
+        default='stratify', metadata={"help": "If max_train/eval/predict_sample is set, how to subsample: {per_label, stratify}"}
     )
     train_file: Optional[str] = field(
         default=None, metadata={"help": "A csv or a json file containing the training data."}
@@ -576,16 +578,6 @@ def get_models(model_args, data_args, training_args, adapter_args,
     return model, tokenizer, config, last_checkpoint
 
 
-def random_select(dataset, num_sample, seed=0):
-    dataset, _ = train_test_split(
-            dataset,
-            train_size=num_sample,
-            random_state=seed,
-            stratify=[item['label'] for item in dataset]
-    )
-    return Dataset.from_dict(dataset)
-
-
 def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
                     training_args):
     # Preprocessing the datasets
@@ -653,12 +645,12 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
             if "train" not in dataset:
                 raise ValueError(f"--do_train requires a train dataset in {dataset_name}")
             train_dataset_tmp = dataset["train"]
-            if data_args.max_train_samples is not None:
-                train_dataset_tmp = random_select(
-                    train_dataset_tmp,
-                    data_args.max_train_samples,
-                    training_args.seed,
-                )
+            train_dataset_tmp = reduce_dataset_if_needed(
+                train_dataset_tmp,
+                data_args.max_train_samples,
+                data_args,
+                training_args,
+            )
 
             if data_args.train_sampling is not None:
                 if data_args.train_sampling == 'balanced_over':
@@ -682,13 +674,12 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
                 raise ValueError(f"--do_eval requires a validation dataset in {dataset_name}")
 
             eval_dataset_tmp = dataset["validation"]
-
-            if data_args.max_eval_samples is not None:
-                eval_dataset_tmp = random_select(
-                    eval_dataset_tmp,
-                    data_args.max_eval_samples,
-                    training_args.seed,
-                )
+            eval_dataset_tmp = reduce_dataset_if_needed(
+                eval_dataset_tmp,
+                data_args.max_eval_samples,
+                data_args,
+                training_args,
+            )
 
             eval_dataset[dataset_name] = eval_dataset_tmp
 
@@ -700,13 +691,12 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
                 raise ValueError(f"--do_predict requires a test dataset in {dataset_name}")
 
             predict_dataset_tmp = dataset["test"]
-
-            if data_args.max_predict_samples is not None:
-                predict_dataset_tmp = random_select(
-                    predict_dataset_tmp,
-                    data_args.max_predict_samples,
-                    training_args.seed,
-                )
+            predict_dataset_tmp = reduce_dataset_if_needed(
+                predict_dataset_tmp,
+                data_args.max_predict_samples,
+                data_args,
+                training_args,
+            )
 
             predict_dataset[dataset_name] = predict_dataset_tmp
 

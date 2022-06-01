@@ -69,6 +69,7 @@ class RP21(datasets.GeneratorBasedBuilder):
                             'profanity',
                             'meta',
                             'advertisment',
+                            'none',
                         ]
                     ),
                 }
@@ -132,14 +133,17 @@ class RP21(datasets.GeneratorBasedBuilder):
                 elif self.config.name == 'crowd_binary':
                     label = 'abusive' if mod == '1' else 'non-abusive'
                 elif self.config.name == 'crowd_fine_grained':
-                    for name, val in zip(('sexism', sexism), ('racism',
-                        racism), ('threat', threat), ('insult', insult),
-                        ('profanity', profanity), ('meta', meta),
-                        ('advertisment', advert)):
-                        # there were 5 annotators
-                        if val >= 3:
-                            label = name
-                            break
+                    if crowd == '0':
+                        label = 'none'
+                    else:
+                        for name, val in [('sexism', sexism), ('racism',
+                            racism), ('threat', threat), ('insult', insult),
+                            ('profanity', profanity), ('meta', meta),
+                            ('advertisment', advert)]:
+                            # there were 5 annotators
+                            if float(val) >= 3.0:
+                                label = name
+                                break
                 else:
                     raise NotImplementedError('We should not get here!')
 
