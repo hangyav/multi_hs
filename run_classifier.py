@@ -127,7 +127,13 @@ class DataTrainingArguments:
             "value if set."
         },
     )
-    data_selector_method: Optional[str] = field(
+    data_selector_method_train: Optional[str] = field(
+        default='stratify', metadata={"help": "If max_train/eval/predict_sample is set, how to subsample: {per_label, stratify}"}
+    )
+    data_selector_method_eval: Optional[str] = field(
+        default='stratify', metadata={"help": "If max_train/eval/predict_sample is set, how to subsample: {per_label, stratify}"}
+    )
+    data_selector_method_predict: Optional[str] = field(
         default='stratify', metadata={"help": "If max_train/eval/predict_sample is set, how to subsample: {per_label, stratify}"}
     )
     train_file: Optional[str] = field(
@@ -648,8 +654,8 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
             train_dataset_tmp = reduce_dataset_if_needed(
                 train_dataset_tmp,
                 data_args.max_train_samples,
-                data_args,
-                training_args,
+                data_args.data_selector_method_train,
+                training_args.seed,
             )
 
             if data_args.train_sampling is not None:
@@ -677,8 +683,8 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
             eval_dataset_tmp = reduce_dataset_if_needed(
                 eval_dataset_tmp,
                 data_args.max_eval_samples,
-                data_args,
-                training_args,
+                data_args.data_selector_method_eval,
+                training_args.seed,
             )
 
             eval_dataset[dataset_name] = eval_dataset_tmp
@@ -694,8 +700,8 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
             predict_dataset_tmp = reduce_dataset_if_needed(
                 predict_dataset_tmp,
                 data_args.max_predict_samples,
-                data_args,
-                training_args,
+                data_args.data_selector_method_predict,
+                training_args.seed,
             )
 
             predict_dataset[dataset_name] = predict_dataset_tmp

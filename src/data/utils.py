@@ -65,23 +65,24 @@ def apply_on_dataset(func, dataset, load_from_cache_file=True):
     return res
 
 
-def reduce_dataset_if_needed(dataset, num_samples, data_args, training_args):
+def reduce_dataset_if_needed(dataset, num_samples, data_selector_method,
+                             seed):
     if num_samples is None:
         return dataset
-    if data_args.data_selector_method == 'stratify':
+    if data_selector_method == 'stratify':
         dataset = random_select(
             dataset,
             num_samples,
-            training_args.seed,
+            seed,
         )
-    elif data_args.data_selector_method == 'per_label':
+    elif data_selector_method == 'per_label':
         dataset = per_label_select(
             dataset,
             num_samples,
-            training_args.seed,
+            seed,
         )
     else:
-        raise NotADirectoryError(f'Data selection method not supported: {data_args.data_selector_method}')
+        raise NotADirectoryError(f'Data selection method not supported: {data_selector_method}')
     return dataset
 
 
