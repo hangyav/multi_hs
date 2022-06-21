@@ -68,7 +68,7 @@ class RP21(datasets.GeneratorBasedBuilder):
                             'insult',
                             'profanity',
                             'meta',
-                            'advertisment',
+                            'advertisement',
                             'none',
                         ]
                     ),
@@ -139,7 +139,7 @@ class RP21(datasets.GeneratorBasedBuilder):
                         for name, val in [('sexism', sexism), ('racism',
                             racism), ('threat', threat), ('insult', insult),
                             ('profanity', profanity), ('meta', meta),
-                            ('advertisment', advert)]:
+                            ('advertisement', advert)]:
                             # there were 5 annotators
                             if float(val) >= 3.0:
                                 label = name
