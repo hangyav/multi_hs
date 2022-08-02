@@ -1,3 +1,6 @@
+from torch.nn import CrossEntropyLoss
+
+from transformers.modeling_outputs import SequenceClassifierOutput
 
 class MultiTaskModelWrapper:
 
@@ -57,3 +60,34 @@ class AdapterSelectionWrapper(MultiTaskModelWrapper):
         if not self.freeze_model_core:
             # let's only do this if we need to unfreeze
             self.model.freeze_model(self.freeze_model_core)
+
+
+class PromptSelectionWrapper(MultiTaskModelWrapper):
+
+    def __init__(self, model, prompt_models_dict):
+        super().__init__(model)
+        self.prompt_models_dict = prompt_models_dict
+        self.loss_fct = CrossEntropyLoss()
+
+    def forward(self, *args, return_dict=None, **kwargs):
+        assert len(args) == 0
+        return_dict = return_dict if return_dict is not None else self.model.config.use_return_dict
+
+        # FIXME this is not too nice but needed to avoid infinite loop
+        if 'task_name' not in kwargs:
+            # this method is called by the prompt_model
+            return self._old_forward(*args, **kwargs)
+
+        task_name = kwargs.pop('task_name')
+        prompt_model = self.prompt_models_dict[task_name]
+
+        logits = prompt_model.forward(kwargs)
+        loss = self.loss_fct(logits, kwargs['label'])
+
+        if not return_dict:
+            return (loss, logits, None)
+
+        return SequenceClassifierOutput(
+            loss=loss,
+            logits=logits,
+        )

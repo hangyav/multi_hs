@@ -31,20 +31,22 @@ import datasets
 from datasets import load_dataset, load_metric
 
 import transformers
-import transformers.adapters.composition as ac
 from transformers import (
-    AdapterConfig,
-    AutoAdapterModel,
+    # AdapterConfig,
+    # AutoAdapterModel,
     AutoConfig,
     AutoTokenizer,
     DataCollatorWithPadding,
     EvalPrediction,
     HfArgumentParser,
-    MultiLingAdapterArguments,
+    # MultiLingAdapterArguments,
     TrainingArguments,
     default_data_collator,
     set_seed,
     EarlyStoppingCallback,
+    AutoModelForMaskedLM,
+    BertForMaskedLM,
+    RobertaForMaskedLM,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
@@ -56,9 +58,9 @@ from src.modeling import (
     MultiTaskModelWrapper,
     HeadSelectionWrapper,
     AdapterSelectionWrapper,
+    PromptSelectionWrapper,
 )
 from src.training import MultitaskAdapterTrainer, MultitaskTrainer
-from src.visualization import get_averaged_fusion_attentions, visualize_and_save
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -149,10 +151,15 @@ class DataTrainingArguments:
             "help": "Data sampling for label imbalance. Options: balanced_over"
         },
     )
+    prompt_ids: List[int] = field(
+        default=None,
+        metadata={"help": "Which prompt to use for each dataset"}
+    )
 
     def __post_init__(self):
         assert self.dataset_name is not None and self.dataset_config_name is not None
         assert len(self.dataset_name) == len(self.dataset_config_name)
+        assert self.prompt_ids is None or len(self.prompt_ids) == len(self.dataset_name)
 
         if self.task_name is None:
             self.task_name = [
@@ -216,6 +223,15 @@ class ModelArguments:
             "with private models)."
         },
     )
+    model_type: str = field(
+        default="classifier",
+        metadata={"help": "Options: classifier, prompt"},
+    )
+
+    def __post_init__(self):
+        if self.model_type == 'prompt' and self.use_fast_tokenizer:
+            logger.info('Fast tokenizer is not supported by prompts. Ignoring')
+            self.use_fast_tokenizer = False
 
 
 @dataclass
@@ -249,6 +265,49 @@ class MyTrainingArguments(TrainingArguments):
         super().__post_init__()
         if self.early_stopping_patience >= 0:
             self.load_best_model_at_end = True
+
+
+@dataclass
+class AdapterArguments:
+    """
+    The subset of arguments related to adapter training.
+    """
+
+    train_adapter: bool = field(default=False, metadata={"help": "Train an adapter instead of the full model."})
+    load_adapter: Optional[str] = field(
+        default="", metadata={"help": "Pre-trained adapter module to be loaded from Hub."}
+    )
+    adapter_config: Optional[str] = field(
+        default="pfeiffer", metadata={"help": "Adapter configuration. Either an identifier or a path to a file."}
+    )
+    adapter_non_linearity: Optional[str] = field(
+        default=None, metadata={"help": "Override the non-linearity of the adapter configuration."}
+    )
+    adapter_reduction_factor: Optional[float] = field(
+        default=None, metadata={"help": "Override the reduction factor of the adapter configuration."}
+    )
+    language: Optional[str] = field(default=None, metadata={"help": "The training language, e.g. 'en' for English."})
+
+
+
+@dataclass
+class MultiLingAdapterArguments(AdapterArguments):
+    """
+    Arguemnts related to adapter training, extended by arguments for multilingual setups.
+    """
+
+    load_lang_adapter: Optional[str] = field(
+        default=None, metadata={"help": "Pre-trained language adapter module to be loaded from Hub."}
+    )
+    lang_adapter_config: Optional[str] = field(
+        default=None, metadata={"help": "Language adapter configuration. Either an identifier or a path to a file."}
+    )
+    lang_adapter_non_linearity: Optional[str] = field(
+        default=None, metadata={"help": "Override the non-linearity of the language adapter configuration."}
+    )
+    lang_adapter_reduction_factor: Optional[int] = field(
+        default=None, metadata={"help": "Override the reduction factor of the language adapter configuration."}
+    )
 
 
 @dataclass
@@ -289,6 +348,10 @@ def setup():
 
     assert adapter_args.load_lang_adapter is None or len(adapter_args.load_lang_adapter) == len(data_args.task_name)
     assert adapter_args.fuse_adapters is None or len(data_args.task_name) == 1
+
+    if model_args.model_type == 'prompt':
+        assert data_args.prompt_ids is not None
+        training_args.label_names = ['label']
 
     # Setup logging
     logging.basicConfig(
@@ -379,6 +442,10 @@ def get_datasets(model_args, data_args, training_args):
     # num_labels, label_list, is_regression
     dataset_metadata = dict()
 
+    if model_args.model_type == 'prompt':
+        from src.data.prompting import get_pvp
+    else:
+        get_pvp = lambda x: None
     # Labels
     # Trying to have good defaults here, don't hesitate to tweak to your needs.
     for dataset_name, dataset in raw_datasets.items():
@@ -392,128 +459,126 @@ def get_datasets(model_args, data_args, training_args):
             label_list = dataset["train"].features["label"].names
             num_labels = len(label_list)
 
-        dataset_metadata[dataset_name] = (num_labels, label_list, is_regression)
+        dataset_metadata[dataset_name] = (
+            num_labels,
+            label_list,
+            is_regression,
+            get_pvp(dataset['train'])
+        )
 
     return raw_datasets, dataset_metadata
 
 
-def wrap_model(model, data_args, training_args, adapter_args,
-               lang_adapter_names, adapter_setup):
-    if not adapter_args.train_adapter:
-        head_dict = {
-            f'{dataset_name}-{dataset_config_name}': task_name
-            for task_name, dataset_name, dataset_config_name in zip(
-                data_args.task_name,
-                data_args.dataset_name,
-                data_args.dataset_config_name,
-            )
-        }
-        HeadSelectionWrapper(model, head_dict)
-    else:
-        if adapter_args.fuse_adapters is not None:
-            # there's only one task in this case.
-            model.train_adapter_fusion(adapter_setup)
-            MultiTaskModelWrapper(model)
-        else:
-            adapter_dict = {
-                f'{dataset_name}-{dataset_config_name}': [task_name]
+def setup_model(model, tokenizer, dataset_metadata, model_args, data_args,
+                training_args, adapter_args):
+    if model_args.model_type == 'classifier':
+        for i, task_name in enumerate(data_args.task_name):
+            dataset_name = f'{data_args.dataset_name[i]}-{data_args.dataset_config_name[i]}'
+            num_labels, label_list, _, _ = dataset_metadata[dataset_name]
+            if task_name not in model.config.prediction_heads:
+                # TODO model.load_head() should be used if trained head exists and
+                # adapters are used. However, model.load_adapter() seems to do this if
+                # head and adapter are at the same path, so I leave this as is for now.
+                model.add_classification_head(
+                    task_name,
+                    num_labels=num_labels,
+                    id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
+                )
+
+    lang_adapter_names, adapter_setup = setup_adapters_if_needed(
+        model,
+        model_args,
+        data_args,
+        training_args,
+        adapter_args
+    )
+    model, tokenizer, wrapper = setup_propting_if_needed(
+        model, tokenizer, model_args)
+
+    wrap_model(model, tokenizer, model_args, data_args, training_args, adapter_args,
+               lang_adapter_names, adapter_setup, dataset_metadata)
+
+    return model, tokenizer, wrapper
+
+
+def wrap_model(model, tokenizer, model_args, data_args, training_args, adapter_args,
+               lang_adapter_names, adapter_setup, dataset_metadata):
+    if model_args.model_type == 'classifier':
+        if not adapter_args.train_adapter:
+            head_dict = {
+                f'{dataset_name}-{dataset_config_name}': task_name
                 for task_name, dataset_name, dataset_config_name in zip(
                     data_args.task_name,
                     data_args.dataset_name,
                     data_args.dataset_config_name,
                 )
             }
-            active_adapter_dict = None
-            if lang_adapter_names is not None:
-                active_adapter_dict = {
-                    f'{dataset_name}-{dataset_config_name}': ac.Stack(lang_adapter, task_name)
-                    for task_name, dataset_name, dataset_config_name, lang_adapter in zip(
+            HeadSelectionWrapper(model, head_dict)
+        else:
+            import transformers.adapters.composition as ac
+            if adapter_args.fuse_adapters is not None:
+                # there's only one task in this case.
+                model.train_adapter_fusion(adapter_setup)
+                MultiTaskModelWrapper(model)
+            else:
+                adapter_dict = {
+                    f'{dataset_name}-{dataset_config_name}': [task_name]
+                    for task_name, dataset_name, dataset_config_name in zip(
                         data_args.task_name,
                         data_args.dataset_name,
                         data_args.dataset_config_name,
-                        lang_adapter_names,
                     )
                 }
+                active_adapter_dict = None
+                if lang_adapter_names is not None:
+                    active_adapter_dict = {
+                        f'{dataset_name}-{dataset_config_name}': ac.Stack(lang_adapter, task_name)
+                        for task_name, dataset_name, dataset_config_name, lang_adapter in zip(
+                            data_args.task_name,
+                            data_args.dataset_name,
+                            data_args.dataset_config_name,
+                            lang_adapter_names,
+                        )
+                    }
 
-            # We need to activate any adapter now
-            # Freeze all model weights except of those of this adapter
-            model.train_adapter(next(adapter_dict.values().__iter__()))
-            # Set the adapters to be used in every forward pass
-            tmp_dict = active_adapter_dict if active_adapter_dict else adapter_dict
-            model.set_active_adapters(next(tmp_dict.values().__iter__()))
+                # We need to activate any adapter now
+                # Freeze all model weights except of those of this adapter
+                model.train_adapter(next(adapter_dict.values().__iter__()))
+                # Set the adapters to be used in every forward pass
+                tmp_dict = active_adapter_dict if active_adapter_dict else adapter_dict
+                model.set_active_adapters(next(tmp_dict.values().__iter__()))
 
-            AdapterSelectionWrapper(model, adapter_dict, active_adapter_dict,
-                                    training_args.freeze_model_core)
-
-
-def get_models(model_args, data_args, training_args, adapter_args,
-               dataset_metadata):
-    # Detecting last checkpoint.
-    last_checkpoint = None
-    if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
-        last_checkpoint = get_last_checkpoint(training_args.output_dir)
-        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
-            raise ValueError(
-                f"Output directory ({training_args.output_dir}) already exists and is not empty. "
-                "Use --overwrite_output_dir to overcome."
+                AdapterSelectionWrapper(model, adapter_dict, active_adapter_dict,
+                                        training_args.freeze_model_core)
+    elif model_args.model_type == 'prompt':
+        from openprompt import PromptForClassification
+        prompt_model_dict = {
+            f'{dataset_name}-{dataset_config}': dataset_metadata[f'{dataset_name}-{dataset_config}'][3].get_pvp(pattern_id, tokenizer)
+            for dataset_name, dataset_config, pattern_id in zip(
+                data_args.dataset_name,
+                data_args.dataset_config_name,
+                data_args.prompt_ids
             )
-        elif last_checkpoint is not None and training_args.resume_from_checkpoint is None:
-            logger.info(
-                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
-                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
-            )
+        }
+        prompt_model_dict = {
+            # FIXME manual moving to cuda is not nice at all
+            k: PromptForClassification(
+                template=v.template,
+                verbalizer=v.verbalizer,
+                plm=model,
+                ).to('cpu' if training_args.no_cuda else 'cuda:0')
+            for k, v in prompt_model_dict.items()
+        }
+        PromptSelectionWrapper(model, prompt_model_dict)
 
-    # Load pretrained model and tokenizer
-    #
-    # In distributed training, the .from_pretrained methods guarantee that only
-    # one local process can concurrently download model & vocab.
-    config = AutoConfig.from_pretrained(
-        model_args.config_name if model_args.config_name else model_args.model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    if config.finetuning_task is None:
-        config.finetuning_task = data_args.task_name
-    elif type(config.finetuning_task) == str:
-        config.finetuning_task = [config.finetuning_task] + data_args.task_name
-    else:
-        config.finetuning_task.extend(data_args.task_name)
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        use_fast=model_args.use_fast_tokenizer,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    # We use the AutoAdapterModel class here for better adapter support.
-    model = AutoAdapterModel.from_pretrained(
-        model_args.model_name_or_path,
-        from_tf=bool(".ckpt" in model_args.model_name_or_path),
-        config=config,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-
-    for i, task_name in enumerate(data_args.task_name):
-        dataset_name = f'{data_args.dataset_name[i]}-{data_args.dataset_config_name[i]}'
-        num_labels, label_list, _ = dataset_metadata[dataset_name]
-        if task_name not in model.config.prediction_heads:
-            # TODO model.load_head() should be used if trained head exists and
-            # adapters are used. However, model.load_adapter() seems to do this if
-            # head and adapter are at the same path, so I leave this as is for now.
-            model.add_classification_head(
-                task_name,
-                num_labels=num_labels,
-                id2label={i: v for i, v in enumerate(label_list)} if num_labels > 0 else None,
-            )
-
-    # Setup adapters
+def setup_adapters_if_needed(model, model_args, data_args, training_args,
+                             adapter_args):
     lang_adapter_names = None
     adapter_setup = None
     if adapter_args.train_adapter:
+        from transformers import AdapterConfig
+
         for adapter in list(model.config.adapters.adapters.keys()):
             # we delete existing adapters because we load externals anyways
             # if we don't do this we get an error message that some weights are
@@ -573,15 +638,124 @@ def get_models(model_args, data_args, training_args, adapter_args,
                 "Use --train_adapter to enable adapter training"
             )
 
-    wrap_model(model, data_args, training_args, adapter_args,
-               lang_adapter_names, adapter_setup)
-
-    if adapter_args.fuse_adapters is None:
+    if model_args.model_type == 'classifier' and adapter_args.fuse_adapters is None:
         # things get messy if we freeze with fusion. It is frozen anyways.
         # Unfreezing with fusion doesn't make too much sense probably.
         model.freeze_model(training_args.freeze_model_core)
 
-    return model, tokenizer, config, last_checkpoint
+    return lang_adapter_names, adapter_setup
+
+
+def get_openprompts_model_name(model):
+    try:
+        return {
+            BertForMaskedLM: 'bert',
+            RobertaForMaskedLM: 'roberta',
+        }[type(model)]
+    except Exception:
+        raise ValueError(f'Model type not supported: {type(model)}')
+
+
+def setup_propting_if_needed(model, tokenizer, model_args):
+    wrapper = None
+    if model_args.model_type == 'prompt':
+        from openprompt import plms
+
+        model_name = get_openprompts_model_name(model)
+        model_class = plms.get_model_class(model_name)
+        specials_to_add = None
+        if 'gpt' in model_name: # add pad token for gpt
+            specials_to_add = ["<pad>"]
+        wrapper = model_class.wrapper
+
+        model, tokenizer = plms.add_special_tokens(
+            model,
+            tokenizer,
+            specials_to_add=specials_to_add
+        )
+
+        if 'opt' in model_name:
+            tokenizer.add_bos_token=False
+
+    return model, tokenizer, wrapper
+
+
+def get_models(model_args, data_args, training_args, adapter_args,
+               dataset_metadata):
+    # Detecting last checkpoint.
+    last_checkpoint = None
+    if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
+        last_checkpoint = get_last_checkpoint(training_args.output_dir)
+        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
+            raise ValueError(
+                f"Output directory ({training_args.output_dir}) already exists and is not empty. "
+                "Use --overwrite_output_dir to overcome."
+            )
+        elif last_checkpoint is not None and training_args.resume_from_checkpoint is None:
+            logger.info(
+                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
+                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
+            )
+
+    # Load pretrained model and tokenizer
+    #
+    # In distributed training, the .from_pretrained methods guarantee that only
+    # one local process can concurrently download model & vocab.
+    config = AutoConfig.from_pretrained(
+        model_args.config_name if model_args.config_name else model_args.model_name_or_path,
+        cache_dir=model_args.cache_dir,
+        revision=model_args.model_revision,
+        use_auth_token=True if model_args.use_auth_token else None,
+    )
+    if config.finetuning_task is None:
+        config.finetuning_task = data_args.task_name
+    elif type(config.finetuning_task) == str:
+        config.finetuning_task = [config.finetuning_task] + data_args.task_name
+    else:
+        config.finetuning_task.extend(data_args.task_name)
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+        cache_dir=model_args.cache_dir,
+        use_fast=model_args.use_fast_tokenizer,
+        revision=model_args.model_revision,
+        use_auth_token=True if model_args.use_auth_token else None,
+    )
+    # We use the AutoAdapterModel class here for better adapter support.
+    if model_args.model_type == 'classifier':
+        from transformers import AutoAdapterModel
+
+        model = AutoAdapterModel.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+    elif model_args.model_type == 'prompt':
+        model = AutoModelForMaskedLM.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+    else:
+        raise ValueError(f'Unsupperted model_type: {model_args.model_type}')
+
+    model, tokenizer, wrapper = setup_model(
+        model,
+        tokenizer,
+        dataset_metadata,
+        model_args,
+        data_args,
+        training_args,
+        adapter_args
+    )
+
+    return model, tokenizer, config, wrapper, last_checkpoint
 
 
 def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
@@ -724,7 +898,7 @@ def main():
         training_args
     )
 
-    model, tokenizer, config, last_checkpoint = get_models(
+    model, tokenizer, config, wrapper, last_checkpoint = get_models(
         model_args,
         data_args,
         training_args,
@@ -758,7 +932,7 @@ def main():
     # `EvalPrediction` object (a namedtuple with a predictions and label_ids
     # field) and has to return a dictionary string to float.
     def compute_metrics(p: EvalPrediction, dataset_name: str):
-        _, label_list, is_regression = dataset_metadata[dataset_name]
+        _, label_list, is_regression, _ = dataset_metadata[dataset_name]
         preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
         preds = np.squeeze(preds) if is_regression else np.argmax(preds, axis=1)
 
@@ -786,7 +960,19 @@ def main():
 
     # Data collator will default to DataCollatorWithPadding when the tokenizer
     # is passed to Trainer, so we change it if we already did the padding.
-    if data_args.pad_to_max_length:
+    if wrapper is not None:
+        data_collator = (
+            {
+                f'{dataset_name}-{dataset_config}': dataset_metadata[f'{dataset_name}-{dataset_config}'][3].get_pvp(pattern_id, tokenizer).template
+                for dataset_name, dataset_config, pattern_id in zip(
+                    data_args.dataset_name,
+                    data_args.dataset_config_name,
+                    data_args.prompt_ids
+                )
+            },
+            wrapper,
+        )
+    elif data_args.pad_to_max_length:
         data_collator = default_data_collator
     elif training_args.fp16:
         data_collator = DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8)
@@ -880,7 +1066,7 @@ def main():
             task = f'{dataset_name}-{dataset_config_name}'
             dataset = predict_dataset[task]
 
-            _, label_list, is_regression = dataset_metadata[task]
+            _, label_list, is_regression, _ = dataset_metadata[task]
             predict_res = trainer.predict({task: dataset}, metric_key_prefix="predict")
             predictions = predict_res.predictions[task]
             metrics = predict_res.metrics
@@ -905,6 +1091,8 @@ def main():
                             writer.write(f"{index}\t{item}\n")
 
     if training_args.do_visualize:
+        from src.visualization import get_averaged_fusion_attentions, visualize_and_save
+
         logger.info("*** Generating figures ***")
 
         assert adapter_args.fuse_adapters
@@ -921,7 +1109,7 @@ def main():
             task = f'{dataset_name}-{dataset_config_name}'
             dataset = eval_dataset[task]
 
-            _, label_list, is_regression = dataset_metadata[task]
+            _, label_list, is_regression, _ = dataset_metadata[task]
 
             attentions = get_averaged_fusion_attentions(
                 trainer,

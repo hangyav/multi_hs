@@ -4,7 +4,7 @@ import os
 from typing import List, Optional
 import numpy as np
 
-from transformers import Trainer, AdapterTrainer, PreTrainedModel
+from transformers import Trainer, PreTrainedModel
 from transformers.trainer_utils import (
     EvalLoopOutput,
     EvalPrediction,
@@ -28,6 +28,17 @@ from torch.utils.data.sampler import RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 
 from src.data.multitask import MultitaskDataloader, DataLoaderWithTaskname
+
+try:
+    from openprompt import PromptDataLoader
+    from openprompt.data_utils import InputExample
+except Exception:
+    pass
+
+try:
+    from transformers import AdapterTrainer
+except Exception:
+    AdapterTrainer = Trainer
 
 if is_torch_tpu_available():
     import torch_xla.core.xla_model as xm
@@ -60,6 +71,48 @@ class MultitaskEvalLoopOutput:
 
 
 class MultitaskTrainerMixin(object):
+
+    def _get_dataloader_for_classification(self, dataset, batch_size, sampler):
+        return DataLoader(
+            dataset,
+            batch_size=batch_size,
+            sampler=sampler,
+            collate_fn=self.data_collator,
+        )
+
+    @staticmethod
+    def _convert_dataset_to_openprompt(dataset):
+        return [
+            InputExample(
+                guid=item['id'],
+                text_a=item['text'],
+                label=item['label'],
+            )
+            for item in dataset
+        ]
+
+    def _get_dataloader_for_prompt(self, dataset, task_name, batch_size,
+                                   shuffle):
+        return PromptDataLoader(
+            dataset=MultitaskTrainerMixin._convert_dataset_to_openprompt(dataset),
+            tokenizer=self.tokenizer,
+            template=self.data_collator[0][task_name],
+            tokenizer_wrapper_class=self.data_collator[1],
+            shuffle=shuffle,
+            batch_size=batch_size,
+        )
+
+    def _get_dataloader(self, dataset, task_name, batch_size, sampler=None):
+        if type(self.data_collator) == tuple:
+            return self._get_dataloader_for_prompt(
+                dataset,
+                task_name,
+                batch_size,
+                sampler is not None,
+            )
+        return self._get_dataloader_for_classification(dataset, batch_size,
+                                                       sampler)
+
     def _get_single_train_dataloader(self, task_name, train_dataset):
         """
         Create a single-task data loader that also yields task names
@@ -72,11 +125,11 @@ class MultitaskTrainerMixin(object):
 
         data_loader = DataLoaderWithTaskname(
             task_name=task_name,
-            data_loader=DataLoader(
+            data_loader=self._get_dataloader(
                 train_dataset,
-                batch_size=self.args.train_batch_size,
-                sampler=train_sampler,
-                collate_fn=self.data_collator,
+                task_name,
+                self.args.train_batch_size,
+                train_sampler,
             ),
         )
         return data_loader
@@ -103,11 +156,8 @@ class MultitaskTrainerMixin(object):
         """
         data_loader = DataLoaderWithTaskname(
             task_name=task_name,
-            data_loader=DataLoader(
-                train_dataset,
-                batch_size=self.args.eval_batch_size,
-                collate_fn=self.data_collator,
-            ),
+            data_loader=self._get_dataloader(train_dataset, task_name,
+                                             self.args.eval_batch_size)
         )
         return data_loader
 

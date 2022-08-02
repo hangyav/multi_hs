@@ -2,6 +2,8 @@
 
 import numpy as np
 
+from torch.utils.data.dataloader import DataLoader
+
 
 class StrIgnoreDevice(str):
     """
@@ -24,13 +26,21 @@ class DataLoaderWithTaskname:
         self.data_loader = data_loader
 
         self.batch_size = data_loader.batch_size
-        self.dataset = data_loader.dataset
+        if type(data_loader) != DataLoader:
+            # PromptDataLoader
+            self.dataset = data_loader.raw_dataset
+        else:
+            self.dataset = data_loader.dataset
 
     def __len__(self):
         return len(self.data_loader)
 
     def __iter__(self):
         for batch in self.data_loader:
+            if type(batch) != dict:
+                # InputFeatures
+                batch = {k: v for k, v in batch.items()}
+
             batch["task_name"] = StrIgnoreDevice(self.task_name)
             yield batch
 
