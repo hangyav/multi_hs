@@ -6,6 +6,43 @@ from openprompt import Template, Verbalizer
 from openprompt.prompts import ManualTemplate, ManualVerbalizer
 
 
+class TemplateFactory():
+
+    def __init__(self, template):
+        self.template = template
+
+    def get_template(self, *args, **kwargs):
+        raise NotADirectoryError()
+
+
+class ManualTemplateFactory(TemplateFactory):
+
+    def get_template(self, tokenizer, **kwargs):
+        return ManualTemplate(tokenizer, self.template)
+
+
+class VerbalizerFactory():
+
+    def __init__(self, verbs):
+        self.verbs = verbs
+
+    def get_verbalizer(self, *args, **kwargs):
+        raise NotImplementedError()
+
+
+class ManualVerbalizerFactory(VerbalizerFactory):
+
+    def get_verbalizer(self, tokenizer, classes, **kwargs):
+        return ManualVerbalizer(
+            tokenizer,
+            list(range(len(classes))),
+            label_words={
+                classes.index(k): v
+                for k, v in self.verbs.items()
+            }
+        )
+
+
 @dataclass
 class PVP():
     template: Template
@@ -20,17 +57,12 @@ class DatasetPVPs():
     classes = None
 
     def get_pvp(self, id, tokenizer):
-        template = self.prompt_templates[self.pvps[id][0]]
-        template = ManualTemplate(tokenizer, template)
-
-        verbalizer = self.prompt_verbalizers[self.pvps[id][1]]
-        verbalizer = ManualVerbalizer(
-            tokenizer,
-            list(range(len(self.classes))),
-            label_words={
-                self.classes.index(k): v
-                for k, v in verbalizer.items()
-            }
+        template = self.prompt_templates[self.pvps[id][0]].get_template(
+            tokenizer=tokenizer,
+        )
+        verbalizer = self.prompt_verbalizers[self.pvps[id][1]].get_verbalizer(
+            tokenizer=tokenizer,
+            classes=self.classes,
         )
 
         return PVP(template=template, verbalizer=verbalizer)
@@ -38,53 +70,14 @@ class DatasetPVPs():
 
 PVP_DICT = dict()
 
-PVP_DICT['hate_speech18'] = {
-    'binary': DatasetPVPs(
-        prompt_templates=[
-            '{"placeholder":"text_a"} It was {"mask"}'
-        ],
-        prompt_verbalizers=[
-            {
-                'noHate': ["neutral"],
-                'hate': ["hate"]
-            },
-        ],
-        pvps={
-            0: (0, 0),
-        },
-    ),
-}
-
-PVP_DICT['ami18'] = {
-    'en-misogyny': DatasetPVPs(
-        prompt_templates=[
-            '{"placeholder":"text_a"} It was {"mask"}',
-            '{"placeholder":"text_a"} Was it sexist? {"mask"}',
-        ],
-        prompt_verbalizers=[
-            {
-                'non-misogyny': ["neutral"],
-                'misogyny': ["sexist"]
-            },
-            {
-                'non-misogyny': ["No"],
-                'misogyny': ["Yes"]
-            },
-        ],
-        pvps={
-            0: (0, 0),
-            1: (1, 1),
-        },
-    ),
-}
-
 
 def get_pvp(dataset):
     pvps = get_pvp_by_name_and_config(
         dataset.builder_name,
         dataset.config_name,
     )
-    pvps.classes = dataset.features['label'].names
+    if pvps.classes is None:
+        pvps.classes = dataset.features['label'].names
 
     return pvps
 

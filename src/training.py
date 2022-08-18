@@ -84,11 +84,11 @@ class MultitaskTrainerMixin(object):
     def _convert_dataset_to_openprompt(dataset):
         return [
             InputExample(
-                guid=item['id'],
+                guid=item['id'] if 'id' in item else idx,
                 text_a=item['text'],
                 label=item['label'],
             )
-            for item in dataset
+            for idx, item in enumerate(dataset)
         ]
 
     def _get_dataloader_for_prompt(self, dataset, task_name, batch_size,
