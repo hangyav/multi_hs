@@ -5,6 +5,7 @@ from src.data.prompting import (
     PVP_DICT,
     DatasetPVPs,
     ManualTemplateFactory,
+    MixedTemplateFactory,
     ManualVerbalizerFactory
 )
 
@@ -14,6 +15,7 @@ PVP_DICT['ami18'] = {
             ManualTemplateFactory('{"placeholder":"text_a"} Was it misogynisctic? {"mask"}'),
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
             ManualTemplateFactory('{"placeholder":"text_a"} Was it sexist or neutral? It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "AMI18"} {"soft": "en-misogyny"} {"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -28,17 +30,25 @@ PVP_DICT['ami18'] = {
                 'non-misogyny': ["neutral", "innocent", "nice", "good"],
                 'misogyny': ["sexist", "offensive", "extreme", "bad"],
             }),
+            ManualVerbalizerFactory({
+                'non-misogyny': ["neutral"],
+                'misogyny': ["sexist", "stereotypical", "dominance", "derailing", "harasment", "discrediting"]
+            }),
         ],
         pvps={
             0: (0, 0),
             1: (1, 1),
             2: (1, 2),
             3: (2, 1),
+            4: (3, 1),
+            5: (2, 2),
+            6: (1, 3),
         },
     ),
     'en-misogyny_category': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "AMI18"} {"soft": "en-misogyny_category"} {"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -59,6 +69,8 @@ PVP_DICT['ami18'] = {
         pvps={
             0: (0, 0),
             1: (0, 1),
+            2: (1, 0),
+            3: (1, 1),
         },
     ),
     'it-misogyny': DatasetPVPs(
@@ -69,6 +81,7 @@ PVP_DICT['ami18'] = {
             ManualTemplateFactory('{"placeholder":"text_a"} Was it misogynisctic? {"mask"}'),
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
             ManualTemplateFactory('{"placeholder":"text_a"} Was it sexist or neutral? It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "AMI18"} {"soft": "it-misogyny"} {"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -105,6 +118,8 @@ PVP_DICT['ami18'] = {
             4: (3, 4),
             5: (3, 5),
             6: (4, 4),
+            7: (5, 4),
+            8: (5, 5),
         },
     ),
     'it-misogyny_category': DatasetPVPs(
@@ -112,6 +127,7 @@ PVP_DICT['ami18'] = {
             ManualTemplateFactory('{"placeholder":"text_a"} Era {"mask"}'),
             #
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "AMI18"} {"soft": "it-misogyny_category"} {"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -151,6 +167,8 @@ PVP_DICT['ami18'] = {
             1: (0, 1),
             2: (1, 2),
             3: (1, 3),
+            4: (2, 2),
+            5: (2, 3),
         },
     ),
 }

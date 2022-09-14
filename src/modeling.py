@@ -76,7 +76,8 @@ class PromptSelectionWrapper(MultiTaskModelWrapper):
         # FIXME this is not too nice but needed to avoid infinite loop
         if 'task_name' not in kwargs:
             # this method is called by the prompt_model
-            return self._old_forward(*args, **kwargs)
+            res = self._old_forward(*args, **kwargs)
+            return res
 
         task_name = kwargs.pop('task_name')
         prompt_model = self.prompt_models_dict[task_name]

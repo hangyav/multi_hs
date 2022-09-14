@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import List
 
 from openprompt import Template, Verbalizer
-from openprompt.prompts import ManualTemplate, ManualVerbalizer
+from openprompt.prompts import ManualTemplate, ManualVerbalizer, MixedTemplate
 
 
 class TemplateFactory():
@@ -12,13 +12,19 @@ class TemplateFactory():
         self.template = template
 
     def get_template(self, *args, **kwargs):
-        raise NotADirectoryError()
+        raise NotImplementedError()
 
 
 class ManualTemplateFactory(TemplateFactory):
 
     def get_template(self, tokenizer, **kwargs):
         return ManualTemplate(tokenizer, self.template)
+
+
+class MixedTemplateFactory(TemplateFactory):
+
+    def get_template(self, tokenizer, model, **kwargs):
+        return MixedTemplate(model, tokenizer, self.template)
 
 
 class VerbalizerFactory():
@@ -56,9 +62,10 @@ class DatasetPVPs():
     pvps: List  # list of (template_idx, veralizer_idx)
     classes = None
 
-    def get_pvp(self, id, tokenizer):
+    def get_pvp(self, id, tokenizer, model):
         template = self.prompt_templates[self.pvps[id][0]].get_template(
             tokenizer=tokenizer,
+            model=model,
         )
         verbalizer = self.prompt_verbalizers[self.pvps[id][1]].get_verbalizer(
             tokenizer=tokenizer,

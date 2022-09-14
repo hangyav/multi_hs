@@ -5,6 +5,7 @@ from src.data.prompting import (
     PVP_DICT,
     DatasetPVPs,
     ManualTemplateFactory,
+    MixedTemplateFactory,
     ManualVerbalizerFactory
 )
 
@@ -12,6 +13,7 @@ PVP_DICT['olid'] = {
     'offensive': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "OLID"} {"soft": "offensive"} {"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -26,6 +28,8 @@ PVP_DICT['olid'] = {
         pvps={
             0: (0, 0),
             1: (0, 1),
+            2: (1, 0),
+            3: (1, 1),
         },
     ),
 }

@@ -5,6 +5,7 @@ from src.data.prompting import (
     PVP_DICT,
     DatasetPVPs,
     ManualTemplateFactory,
+    MixedTemplateFactory,
     ManualVerbalizerFactory
 )
 
@@ -12,6 +13,7 @@ PVP_DICT['hasoc19'] = {
     'en-binary': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "hasoc19"} {"soft": "en-binary"} {"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -26,11 +28,14 @@ PVP_DICT['hasoc19'] = {
         pvps={
             0: (0, 0),
             1: (0, 1),
+            2: (1, 0),
+            3: (1, 1),
         },
     ),
     'en-fine_grained': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "hasoc19"} {"soft": "en-fine_grained"} {"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -47,11 +52,14 @@ PVP_DICT['hasoc19'] = {
         pvps={
             0: (0, 0),
             1: (0, 1),
+            2: (1, 0),
+            3: (1, 1),
         },
     ),
     'hi-targeted': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "hasoc19"} {"soft": "hi-targeted"} {"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -66,6 +74,8 @@ PVP_DICT['hasoc19'] = {
         pvps={
             0: (0, 0),
             1: (0, 1),
+            2: (1, 0),
+            3: (1, 1),
         },
     ),
 }

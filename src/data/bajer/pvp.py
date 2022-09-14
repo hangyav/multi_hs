@@ -5,6 +5,7 @@ from src.data.prompting import (
     PVP_DICT,
     DatasetPVPs,
     ManualTemplateFactory,
+    MixedTemplateFactory,
     ManualVerbalizerFactory
 )
 
@@ -14,6 +15,7 @@ PVP_DICT['bajer'] = {
             ManualTemplateFactory('{"placeholder":"text_a"} Det ver {"mask"}'),
             #
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "bajer"} {"soft": "fine_grained"} {"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -43,6 +45,8 @@ PVP_DICT['bajer'] = {
             1: (0, 1),
             2: (1, 2),
             3: (1, 3),
+            4: (2, 2),
+            5: (2, 3),
         },
     ),
     'sexism_binary': DatasetPVPs(
@@ -50,6 +54,7 @@ PVP_DICT['bajer'] = {
             ManualTemplateFactory('{"placeholder":"text_a"} Det ver {"mask"}'),
             #
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "bajer"} {"soft": "sexism_binary"} {"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -75,6 +80,8 @@ PVP_DICT['bajer'] = {
             1: (0, 1),
             2: (1, 2),
             3: (1, 3),
+            4: (2, 2),
+            5: (2, 3),
         },
     ),
 }

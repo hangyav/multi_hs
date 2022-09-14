@@ -553,7 +553,7 @@ def wrap_model(model, tokenizer, model_args, data_args, training_args, adapter_a
     elif model_args.model_type == 'prompt':
         from openprompt import PromptForClassification
         prompt_model_dict = {
-            f'{dataset_name}-{dataset_config}': dataset_metadata[f'{dataset_name}-{dataset_config}'][3].get_pvp(pattern_id, tokenizer)
+            f'{dataset_name}-{dataset_config}': dataset_metadata[f'{dataset_name}-{dataset_config}'][3].get_pvp(pattern_id, tokenizer, model)
             for dataset_name, dataset_config, pattern_id in zip(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
@@ -963,7 +963,7 @@ def main():
     if wrapper is not None:
         data_collator = (
             {
-                f'{dataset_name}-{dataset_config}': dataset_metadata[f'{dataset_name}-{dataset_config}'][3].get_pvp(pattern_id, tokenizer).template
+                f'{dataset_name}-{dataset_config}': dataset_metadata[f'{dataset_name}-{dataset_config}'][3].get_pvp(pattern_id, tokenizer, model).template
                 for dataset_name, dataset_config, pattern_id in zip(
                     data_args.dataset_name,
                     data_args.dataset_config_name,
