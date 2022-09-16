@@ -149,7 +149,7 @@ class Bajer(datasets.GeneratorBasedBuilder):
                 elif self.config.name == 'racism_binary':
                     label = 'RAC' if type == 'RAC' else 'NOT'
                 else:
-                    raise NotADirectoryError('Should not get here!')
+                    raise NotImplementedError('Should not get here!')
 
                 data.append({
                     'id': id,
