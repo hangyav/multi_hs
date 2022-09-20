@@ -135,6 +135,8 @@ class SRW16(datasets.GeneratorBasedBuilder):
                 skipinitialspace=True
             )
             for row in csv_reader:
+                if len(row) < 2:
+                    continue
                 id, tweet = row
                 tweets[id] = tweet
 

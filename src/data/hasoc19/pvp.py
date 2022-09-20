@@ -56,6 +56,25 @@ PVP_DICT['hasoc19'] = {
             3: (1, 1),
         },
     ),
+    'en-targeted': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                'UNT': ['general'],
+                'TIN': ['targeted'],
+            }),
+            ManualVerbalizerFactory({
+                'UNT': ['general', 'normal', 'neutral'],
+                'TIN': ['targeted', 'individual', 'group'],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+            1: (0, 1),
+        },
+    ),
     'hi-targeted': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),

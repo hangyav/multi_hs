@@ -73,6 +73,20 @@ PVP_DICT['ami18'] = {
             3: (1, 1),
         },
     ),
+    'en-target': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was targeted {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                'active': ["individual"],
+                'passive': ["group"]
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
     'it-misogyny': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} Era misogino? {"mask"}'),

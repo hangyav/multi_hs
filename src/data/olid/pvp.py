@@ -24,12 +24,46 @@ PVP_DICT['olid'] = {
                 'NOT': ["neutral", "innocent", "nice", "good"],
                 'OFF': ["offensive", "abusive", "hate", "bad"]
             }),
+            ManualVerbalizerFactory({
+                'NOT': ["neutral"],
+                'OFF': ["hate"]
+            }),
         ],
         pvps={
             0: (0, 0),
             1: (0, 1),
             2: (1, 0),
             3: (1, 1),
+            4: (0, 2),
+        },
+    ),
+    'targeted': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                'UNT': ["general"],
+                'TIN': ["targeted"]
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
+    'target': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was targeted at {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                'IND': ["individual"],
+                'GRP': ["group"],
+                'OTH': ["other"],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
         },
     ),
 }
