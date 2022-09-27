@@ -9,7 +9,7 @@ from src.data.prompting import (
 )
 
 PVP_DICT['rp21'] = {
-    'fine_grained': DatasetPVPs(
+    'crowd_fine_grained': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} Es war {"mask"}'),
             #
@@ -37,10 +37,21 @@ PVP_DICT['rp21'] = {
                 'advertisement': ['advertisement'],
                 'none': ['neutral'],
             }),
+            ManualVerbalizerFactory({
+                'sexism': ['sexist'],
+                'racism': ['racist'],
+                'threat': ['threatening'],
+                'insult': ['insulting'],
+                'profanity': ['profane'],
+                'meta': ['meta'],
+                'advertisement': ['spam'],
+                'none': ['neutral'],
+            }),
         ],
         pvps={
             0: (0, 0),
             1: (1, 1),
+            2: (1, 2),
         },
     ),
 }

@@ -84,4 +84,22 @@ PVP_DICT['bajer'] = {
             5: (2, 3),
         },
     ),
+    'sexism_fine_grained': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                "NEOSEX": ["sexist"],
+                "DISCREDIT": ["discrediting"],
+                "NOR": ["stereotypical"],
+                "AMBIVALENT": ["nice"],
+                "DOMINANCE": ["dominance"],
+                "HARASSMENT": ["harassment"],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
 }

@@ -26,6 +26,7 @@ class Bajer(datasets.GeneratorBasedBuilder):
         # sexism vs all other (incdin non-abusive)
         datasets.BuilderConfig(name='sexism_binary', version=VERSION),
         datasets.BuilderConfig(name='racism_binary', version=VERSION),
+        datasets.BuilderConfig(name='sexism_fine_grained', version=VERSION),
     ]
 
     def _info(self):
@@ -78,6 +79,23 @@ class Bajer(datasets.GeneratorBasedBuilder):
                         names=[
                             'RAC',
                             'NOT',
+                        ]
+                    ),
+                }
+            )
+        elif self.config.name == 'sexism_fine_grained':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('int64'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
+                        names=[
+                            'NEOSEX',
+                            'DISCREDIT',
+                            'NOR',  # normative stereotyping
+                            'AMBIVALENT',  # benevolent sexism
+                            'DOMINANCE',
+                            'HARASSMENT',
                         ]
                     ),
                 }
@@ -136,7 +154,7 @@ class Bajer(datasets.GeneratorBasedBuilder):
             next(csv_reader)
 
             for row in csv_reader:
-                id, _, _, text, _, _, abusive, _, type, _, _, _, _, _ = row
+                id, _, _, text, _, _, abusive, _, type, sex_type, _, _, _, _ = row
 
                 if self.config.name == 'abusive':
                     label = abusive
@@ -148,6 +166,10 @@ class Bajer(datasets.GeneratorBasedBuilder):
                     label = 'SEX' if type == 'SEX' else 'NOT'
                 elif self.config.name == 'racism_binary':
                     label = 'RAC' if type == 'RAC' else 'NOT'
+                elif self.config.name == 'sexism_fine_grained':
+                    if sex_type == '':
+                        continue
+                    label = sex_type
                 else:
                     raise NotImplementedError('Should not get here!')
 

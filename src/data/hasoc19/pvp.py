@@ -75,6 +75,36 @@ PVP_DICT['hasoc19'] = {
             1: (0, 1),
         },
     ),
+    'de-fine_grained': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                'HATE': ["hate"],
+                'OFFN': ["offensive"],
+                'PRFN': ["profane"],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
+    'hi-fine_grained': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                'HATE': ["hate"],
+                'OFFN': ["offensive"],
+                'PRFN': ["profane"],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
     'hi-targeted': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),

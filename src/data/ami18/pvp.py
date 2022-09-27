@@ -55,7 +55,7 @@ PVP_DICT['ami18'] = {
                 "stereotype": ["stereotypical"],
                 "dominance": ["dominance"],
                 "derailing": ["derailing"],
-                "sexual_harassment": ["harasment"],
+                "sexual_harassment": ["harassment"],
                 "discredit": ["discrediting"],
             }),
             ManualVerbalizerFactory({
