@@ -54,4 +54,24 @@ PVP_DICT['rp21'] = {
             2: (1, 2),
         },
     ),
+    'crowd_fine_grained_ab1': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                'sexism': ['sexist'],
+                # 'racism': ['racist'],
+                # 'threat': ['threatening'],
+                # 'insult': ['insulting'],
+                # 'profanity': ['profane'],
+                # 'meta': ['meta'],
+                # 'advertisement': ['advertisement'],
+                'none': ['neutral'],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
 }

@@ -23,6 +23,7 @@ class SRW16(datasets.GeneratorBasedBuilder):
     BUILDER_CONFIGS = [
         datasets.BuilderConfig(name="binary", version=VERSION),
         datasets.BuilderConfig(name="fine_grained", version=VERSION),
+        datasets.BuilderConfig(name="fine_grained_ab1", version=VERSION),  # ablation study
         datasets.BuilderConfig(name="sexism", version=VERSION),
         datasets.BuilderConfig(name="racism", version=VERSION),
     ]
@@ -50,6 +51,20 @@ class SRW16(datasets.GeneratorBasedBuilder):
                         names=[
                             'sexism',
                             'racism',
+                            'none',
+                        ]
+                    ),
+                }
+            )
+        elif self.config.name == 'fine_grained_ab1':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('int64'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
+                        names=[
+                            'sexism',
+                            # 'racism',
                             'none',
                         ]
                     ),
@@ -160,6 +175,9 @@ class SRW16(datasets.GeneratorBasedBuilder):
                     label = 'sexism' if label == 'sexism' else 'non-sexism'
                 elif self.config.name == 'racism':
                     label = 'racism' if label == 'racism' else 'non-racism'
+                elif self.config.name == 'fine_grained_ab1':
+                    if label == 'racism':
+                        continue
 
                 if id in tweets:
                     if id not in seen:

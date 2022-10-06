@@ -25,4 +25,19 @@ PVP_DICT['srw16'] = {
             0: (0, 0),
         },
     ),
+    'fine_grained_ab1': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                'sexism': ['sexist'],
+                # 'racism': ['racist'],
+                'none': ['neutral'],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
 }

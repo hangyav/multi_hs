@@ -40,16 +40,34 @@ class LargeScaleAbuse(datasets.GeneratorBasedBuilder):
         datasets.BuilderConfig(
             name="fine_grained", version=VERSION
         ),
+        datasets.BuilderConfig(
+            name="fine_grained_ab1", version=VERSION  # ablation study
+        ),
     ]
 
     def _info(self):
-        features = datasets.Features(
-            {
-                'id': datasets.Value('string'),
-                "text": datasets.Value("string"),
-                "label": datasets.features.ClassLabel(names=['abusive', 'hateful', 'spam', 'normal']),
-            }
-        )
+        type = self.config.name
+        if type == 'fine_grained':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=['abusive', 'hateful', 'spam', 'normal']),
+                }
+            )
+        elif type == 'fine_grained_ab1':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        # 'abusive',
+                        'hateful',
+                        # 'spam',
+                        'normal'
+                    ]),
+                }
+            )
 
         return datasets.DatasetInfo(
             description=_DESCRIPTION,
@@ -90,6 +108,7 @@ class LargeScaleAbuse(datasets.GeneratorBasedBuilder):
 
     def _generate_examples(self, filepath, split):
         data = list()
+        type = self.config.name
         with open(filepath, encoding="utf-8") as csv_file:
 
             csv_reader = csv.reader(
@@ -107,6 +126,10 @@ class LargeScaleAbuse(datasets.GeneratorBasedBuilder):
                 id, text, label = row
                 if label == '':
                     continue
+
+                if type == 'fine_grained_ab1':
+                    if label in {'abusive', 'spam'}:
+                        continue
 
                 item = {
                     'id': id,

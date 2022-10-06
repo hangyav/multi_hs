@@ -2,8 +2,16 @@
 from dataclasses import dataclass
 from typing import List
 
-from openprompt import Template, Verbalizer
-from openprompt.prompts import ManualTemplate, ManualVerbalizer, MixedTemplate
+try:
+    from openprompt import Template, Verbalizer
+    from openprompt.prompts import ManualTemplate, ManualVerbalizer, MixedTemplate
+except Exception:
+    # FIXME not nice but will do to deal with the different requirements of
+    # the adapters and openprompt libraries
+    Template, Verbalizer = None, None
+    ManualTemplate = lambda x, y: None
+    ManualVerbalizer = lambda x, y: None
+    MixedTemplate = lambda x, y: None
 
 
 class TemplateFactory():

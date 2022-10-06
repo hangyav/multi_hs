@@ -26,6 +26,7 @@ class RP21(datasets.GeneratorBasedBuilder):
         datasets.BuilderConfig(name="crowd_binary", version=VERSION),
         # fine_grained
         datasets.BuilderConfig(name="crowd_fine_grained", version=VERSION),
+        datasets.BuilderConfig(name="crowd_fine_grained_ab1", version=VERSION),  # ablation study
     ]
 
     def _info(self):
@@ -69,6 +70,25 @@ class RP21(datasets.GeneratorBasedBuilder):
                             'profanity',
                             'meta',
                             'advertisement',
+                            'none',
+                        ]
+                    ),
+                }
+            )
+        elif self.config.name == 'crowd_fine_grained_ab1':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('int64'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
+                        names=[
+                            'sexism',
+                            # 'racism',
+                            # 'threat',
+                            # 'insult',
+                            # 'profanity',
+                            # 'meta',
+                            # 'advertisement',
                             'none',
                         ]
                     ),
@@ -144,6 +164,20 @@ class RP21(datasets.GeneratorBasedBuilder):
                             if float(val) >= 3.0:
                                 label = name
                                 break
+                elif self.config.name == 'crowd_fine_grained_ab1':
+                    if crowd == '0':
+                        label = 'none'
+                    else:
+                        for name, val in [('sexism', sexism), ('racism',
+                            racism), ('threat', threat), ('insult', insult),
+                            ('profanity', profanity), ('meta', meta),
+                            ('advertisement', advert)]:
+                            # there were 5 annotators
+                            if float(val) >= 3.0:
+                                label = name
+                                break
+                    if label in {'racism', 'threat', 'insult', 'profanity', 'meta', 'advertisement'}:
+                        continue
                 else:
                     raise NotImplementedError('We should not get here!')
 

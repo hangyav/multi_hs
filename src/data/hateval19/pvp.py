@@ -58,6 +58,7 @@ PVP_DICT['hateval19'] = {
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was targeted {"mask"}'),
             MixedTemplateFactory('{"soft": "hateval19"} {"soft": "en-target"} {"placeholder":"text_a"} It was targeted at {"mask"}'),
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -68,12 +69,17 @@ PVP_DICT['hateval19'] = {
                 'individual': ["individual", "person", "man", "woman"],
                 'generic': ["group", "women", "immigrants", "people"]
             }),
+            ManualVerbalizerFactory({
+                'individual': ["active"],
+                'generic': ["passive"]
+            }),
         ],
         pvps={
             0: (0, 0),
             1: (0, 1),
             2: (1, 0),
             3: (1, 1),
+            4: (2, 2),
         },
     ),
     'es-hate': DatasetPVPs(

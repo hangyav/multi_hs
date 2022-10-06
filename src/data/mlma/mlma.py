@@ -58,6 +58,12 @@ class MLMA(datasets.GeneratorBasedBuilder):
             name="en-sentiment_rep", version=VERSION
         ),
         datasets.BuilderConfig(
+            name="en-sentiment_rep_ab1", version=VERSION  # ablation study
+        ),
+        datasets.BuilderConfig(
+            name="en-sentiment_rep_ab2", version=VERSION  # ablation study
+        ),
+        datasets.BuilderConfig(
             name="en-directness", version=VERSION
         ),
         # datasets.BuilderConfig(
@@ -79,6 +85,36 @@ class MLMA(datasets.GeneratorBasedBuilder):
                     'id': datasets.Value('string'),
                     "text": datasets.Value("string"),
                     "label": datasets.features.ClassLabel(names=['abusive', 'hateful', 'offensive', 'disrespectful', 'fearful', 'normal']),
+                }
+            )
+        elif type == "sentiment_rep_ab1":
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        # 'abusive',
+                        'hateful',
+                        'offensive',
+                        # 'disrespectful',
+                        # 'fearful',
+                        'normal'
+                    ]),
+                }
+            )
+        elif type == "sentiment_rep_ab2":
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        'abusive',
+                        'hateful',
+                        'offensive',
+                        # 'disrespectful',
+                        # 'fearful',
+                        'normal'
+                    ]),
                 }
             )
         elif type == "directness":
@@ -181,6 +217,30 @@ class MLMA(datasets.GeneratorBasedBuilder):
 
                 if type == 'sentiment_rep':
                     for idx, label in enumerate(sentiment.split('_')):
+                        item = {
+                            'id': f'{id}.{idx}',
+                            'text': text,
+                            'label': label,
+                        }
+                        data.append(item)
+
+                    continue
+                elif type == 'sentiment_rep_ab1':
+                    for idx, label in enumerate(sentiment.split('_')):
+                        if label in {'abusive', 'disrespectful', 'fearful'}:
+                            continue
+                        item = {
+                            'id': f'{id}.{idx}',
+                            'text': text,
+                            'label': label,
+                        }
+                        data.append(item)
+
+                    continue
+                elif type == 'sentiment_rep_ab2':
+                    for idx, label in enumerate(sentiment.split('_')):
+                        if label in {'disrespectful', 'fearful'}:
+                            continue
                         item = {
                             'id': f'{id}.{idx}',
                             'text': text,

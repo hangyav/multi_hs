@@ -39,6 +39,8 @@ class HASOC19(datasets.GeneratorBasedBuilder):
         for lang in ['en', 'de', 'hi']
         for type in ['binary', 'fine_grained', 'targeted']
         if f'{lang}-{type}' not in ['de-targeted']
+    ] + [
+        datasets.BuilderConfig(name='en-fine_grained_ab1', version=datasets.Version("1.0.0")),  # setup for ablation study
     ]
 
     def _info(self):
@@ -66,6 +68,20 @@ class HASOC19(datasets.GeneratorBasedBuilder):
                             'HATE',
                             'OFFN',
                             'PRFN',
+                        ]
+                    ),
+                }
+            )
+        elif type == 'fine_grained_ab1':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
+                        names=[
+                            'HATE',
+                            'OFFN',
+                            # 'PRFN',
                         ]
                     ),
                 }
@@ -160,6 +176,10 @@ class HASOC19(datasets.GeneratorBasedBuilder):
                     label = label_binary
                 elif type == 'fine_grained':
                     label = label_fine_grained
+                elif type == 'fine_grained_ab1':
+                    label = label_fine_grained
+                    if label == 'PRFN':
+                        continue
                 else:
                     label = targeted
 
