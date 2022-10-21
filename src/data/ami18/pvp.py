@@ -75,7 +75,8 @@ PVP_DICT['ami18'] = {
     ),
     'en-target': DatasetPVPs(
         prompt_templates=[
-            ManualTemplateFactory('{"placeholder":"text_a"} It was targeted {"mask"}'),
+            # ManualTemplateFactory('{"placeholder":"text_a"} It was targeted {"mask"}'),
+            ManualTemplateFactory('{"placeholder":"text_a"} It was targeted at {"mask"}'),
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
         ],
         prompt_verbalizers=[

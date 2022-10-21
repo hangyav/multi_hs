@@ -56,7 +56,8 @@ PVP_DICT['hateval19'] = {
     ),
     'en-target': DatasetPVPs(
         prompt_templates=[
-            ManualTemplateFactory('{"placeholder":"text_a"} It was targeted {"mask"}'),
+            # ManualTemplateFactory('{"placeholder":"text_a"} It was targeted {"mask"}'),
+            ManualTemplateFactory('{"placeholder":"text_a"} It was targeted at {"mask"}'),
             MixedTemplateFactory('{"soft": "hateval19"} {"soft": "en-target"} {"placeholder":"text_a"} It was targeted at {"mask"}'),
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
         ],

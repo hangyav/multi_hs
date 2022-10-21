@@ -71,6 +71,19 @@ require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/text
 logger = logging.getLogger(__name__)
 
 
+def setup_max_samples(max_sample, num):
+    if max_sample is None:
+        max_sample = [None] * num
+    elif len(max_sample) == 1:
+        max_sample = max_sample * num
+    elif len(max_sample) == 2 and num > 2:
+        # first value for all but last
+        max_sample = [max_sample[0]] * (num-1) + [max_sample[1]]
+    max_sample = [None if item == -1 else item for item in max_sample]
+
+    return max_sample
+
+
 @dataclass
 class DataTrainingArguments:
     """
@@ -108,21 +121,21 @@ class DataTrainingArguments:
             "If False, will pad the samples dynamically when batching to the maximum length in the batch."
         },
     )
-    max_train_samples: Optional[int] = field(
+    max_train_samples: Optional[List[int]] = field(
         default=None,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of training examples to this "
             "value if set."
         },
     )
-    max_eval_samples: Optional[int] = field(
+    max_eval_samples: Optional[List[int]] = field(
         default=None,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
             "value if set."
         },
     )
-    max_predict_samples: Optional[int] = field(
+    max_predict_samples: Optional[List[int]] = field(
         default=None,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of prediction examples to this "
@@ -181,12 +194,21 @@ class DataTrainingArguments:
         if self.train_sampling is not None and self.train_sampling.lower() == 'none':
             self.train_sampling = None
 
-        if self.max_train_samples is not None and self.max_train_samples == -1:
-            self.max_train_samples = None
-        if self.max_eval_samples is not None and self.max_eval_samples == -1:
-            self.max_eval_samples = None
-        if self.max_predict_samples is not None and self.max_predict_samples == -1:
-            self.max_predict_samples = None
+        self.max_train_samples = setup_max_samples(
+            self.max_train_samples,
+            len(self.dataset_name)
+        )
+        assert len(self.max_train_samples) == len(self.dataset_name)
+        self.max_eval_samples = setup_max_samples(
+            self.max_eval_samples,
+            len(self.dataset_name)
+        )
+        assert len(self.max_eval_samples) == len(self.dataset_name)
+        self.max_predict_samples = setup_max_samples(
+            self.max_predict_samples,
+            len(self.dataset_name)
+        )
+        assert len(self.max_predict_samples) == len(self.dataset_name)
 
 
 @dataclass
@@ -821,13 +843,13 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
     train_dataset = None
     if training_args.do_train:
         train_dataset = dict()
-        for dataset_name, dataset in raw_datasets.items():
+        for (dataset_name, dataset), max_train_samples in zip(raw_datasets.items(), data_args.max_train_samples):
             if "train" not in dataset:
                 raise ValueError(f"--do_train requires a train dataset in {dataset_name}")
             train_dataset_tmp = dataset["train"]
             train_dataset_tmp = reduce_dataset_if_needed(
                 train_dataset_tmp,
-                data_args.max_train_samples,
+                max_train_samples,
                 data_args.data_selector_method_train,
                 training_args.seed,
             )
@@ -849,14 +871,14 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
     eval_dataset = None
     if training_args.do_eval:
         eval_dataset = dict()
-        for dataset_name, dataset in raw_datasets.items():
+        for (dataset_name, dataset), max_eval_samples in zip(raw_datasets.items(), data_args.max_eval_samples):
             if "validation" not in dataset:
                 raise ValueError(f"--do_eval requires a validation dataset in {dataset_name}")
 
             eval_dataset_tmp = dataset["validation"]
             eval_dataset_tmp = reduce_dataset_if_needed(
                 eval_dataset_tmp,
-                data_args.max_eval_samples,
+                max_eval_samples,
                 data_args.data_selector_method_eval,
                 training_args.seed,
             )
@@ -866,14 +888,14 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
     predict_dataset = None
     if training_args.do_predict:
         predict_dataset = dict()
-        for dataset_name, dataset in raw_datasets.items():
+        for (dataset_name, dataset), max_predict_samples in zip(raw_datasets.items(), data_args.max_predict_samples):
             if "test" not in dataset:
                 raise ValueError(f"--do_predict requires a test dataset in {dataset_name}")
 
             predict_dataset_tmp = dataset["test"]
             predict_dataset_tmp = reduce_dataset_if_needed(
                 predict_dataset_tmp,
-                data_args.max_predict_samples,
+                max_predict_samples,
                 data_args.data_selector_method_predict,
                 training_args.seed,
             )
@@ -1012,12 +1034,12 @@ def main():
         # 273: self.trainer.model.load_adapter_fusion(fusion_dir)
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         metrics = train_result.metrics
-        max_train_samples = (
-            data_args.max_train_samples * len(train_dataset)
-            if data_args.max_train_samples is not None else
-            sum([len(dataset) for dataset in train_dataset])
-        )
-        metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+        max_train_samples_tmp = sum([
+            max_sample if max_sample is not None else len(dataset)
+            for dataset, max_sample in zip(train_dataset, data_args.max_train_samples)
+        ])
+        metrics["train_samples"] = min(
+            max_train_samples_tmp, len(train_dataset))
 
         # XXX There seems to be a bug in the adapter-transformers library.
         # When --train_adapter and --load_best_model_at_end is set the
@@ -1036,10 +1058,11 @@ def main():
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
 
-        for task_name, dataset_name, dataset_config_name in zip(
+        for task_name, dataset_name, dataset_config_name, max_samples in zip(
             data_args.task_name,
             data_args.dataset_name,
             data_args.dataset_config_name,
+            data_args.max_eval_samples,
         ):
             task = f'{dataset_name}-{dataset_config_name}'
             dataset = eval_dataset[task]
@@ -1047,10 +1070,10 @@ def main():
             metrics = trainer.evaluate(eval_dataset={task: dataset})
             metrics = {k: v for k, v in metrics.items() if 'MULTIAVG' not in k}
 
-            max_eval_samples = (
-                data_args.max_eval_samples if data_args.max_eval_samples is not None else len(dataset)
+            max_eval_samples_tmp = (
+                max_samples if max_samples is not None else len(dataset)
             )
-            metrics["eval_samples"] = min(max_eval_samples, len(dataset))
+            metrics["eval_samples"] = min(max_eval_samples_tmp, len(dataset))
 
             trainer.log_metrics(f'validation_{task_name}', metrics)
             trainer.save_metrics(f'validation_{task_name}', metrics)
