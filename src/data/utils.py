@@ -1,5 +1,6 @@
 import os
 import logging
+import random
 
 
 from datasets import load_from_disk, Dataset
@@ -89,14 +90,40 @@ def reduce_dataset_if_needed(dataset, num_samples, data_selector_method,
     return dataset
 
 
-def random_select(dataset, num_sample, seed=0):
-    dataset, _ = train_test_split(
+def random_select(dataset, num_sample, min_per_label=1, seed=0):
+    labels = set([item['label'] for item in dataset])
+    res_dataset, _ = train_test_split(
             dataset,
-            train_size=num_sample,
+            train_size=num_sample - len(labels)*min_per_label,
             random_state=seed,
             stratify=[item['label'] for item in dataset]
     )
-    return Dataset.from_dict(dataset)
+
+    min_items = {
+        label: min_per_label
+        for label in labels
+    }
+    already_selected = set(res_dataset['id'])
+    tmp_lst = [item for item in dataset if item['id'] not in already_selected]
+    random.Random(seed).shuffle(tmp_lst)
+
+    for item in tmp_lst:
+        label = item['label']
+
+        if label in min_items:
+            for k, v in item.items():
+                res_dataset[k].append(v)
+
+            min_items[label] -= 1
+            if min_items[label] <= 0:
+                del min_items[label]
+
+        if len(min_items) == 0:
+            break
+    else:
+        raise ValueError(f'There are no enough elements for each label. Missing: {min_items}')
+
+    return Dataset.from_dict(res_dataset)
 
 
 def per_label_select(dataset, num_samples, seed=0):
