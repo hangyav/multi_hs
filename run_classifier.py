@@ -280,7 +280,11 @@ class MyTrainingArguments(TrainingArguments):
     )
     do_visualize: bool = field(
         default=False,
-        metadata={"help": "Whether to freeze the core LM."},
+        metadata={"help": "Visualize fusion weights"},
+    )
+    do_debug_predictions: bool = field(
+        default=False,
+        metadata={"help": ""},
     )
 
     def __post_init__(self):
@@ -1164,6 +1168,74 @@ def main():
             xticklabels=adapter_args.fuse_adapters,
             yticklabels=data_args.task_name,
         )
+
+    if training_args.do_debug_predictions:
+        assert model_args.model_type == 'prompt'
+        from src.visualization import get_prediction_logits, lineplot_and_save
+
+        np_descriptors = {
+            'mean': np.mean,
+            'median': np.median,
+            'minimum': np.min,
+            'maximum': np.max,
+            'range': np.ptp,
+            'variance': np.var,
+            'STD': np.std,
+        }
+
+        for task_name, dataset_name, dataset_config_name in zip(
+            data_args.task_name,
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+        ):
+            task = f'{dataset_name}-{dataset_config_name}'
+            dataset = eval_dataset[task]
+            _, label_list, is_regression, _ = dataset_metadata[task]
+            res_dict = {}
+            pooled_logits = list()
+
+            for input_ids_batch, outputs_batch, label_logits_batch in get_prediction_logits(
+                trainer,
+                eval_dataset={task: dataset}
+            ):
+                for token_ids, output_logits, label_logits in zip(input_ids_batch, outputs_batch, label_logits_batch):
+                    last_idx = 0
+                    for idx in range(len(token_ids)):
+                        if token_ids[idx] == tokenizer.pad_token_id:
+                            break
+                        last_idx = idx
+
+                    token_ids = token_ids[:last_idx]
+
+                    print(tokenizer.convert_tokens_to_string(
+                        tokenizer.convert_ids_to_tokens(token_ids))
+                    )
+                    print('Token logits:')
+                    print(output_logits)
+
+                    for k, v in np_descriptors.items():
+                        val = v(output_logits.numpy())
+                        print(f'{k}: {val}')
+                        res_dict.setdefault(f'output_logits_{k}', list()).append(val)
+
+                    pooled_logits.append(output_logits.numpy())
+
+                    print('Label logits:')
+                    print(label_logits)
+                    print()
+
+            print('Dataset statistics:')
+            for k, v in res_dict.items():
+                print(f'{k}: {np.mean(v)}')
+
+            lineplot_and_save(
+                np.mean(pooled_logits, axis=0),
+                os.path.join(
+                    training_args.output_dir,
+                    f'{task}_pooled_output_logits.pdf'
+                ),
+
+            )
 
 
 def _mp_fn(index):
