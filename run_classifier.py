@@ -47,6 +47,7 @@ from transformers import (
     AutoModelForMaskedLM,
     BertForMaskedLM,
     RobertaForMaskedLM,
+    DataCollatorForLanguageModeling,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
@@ -60,7 +61,12 @@ from src.modeling import (
     AdapterSelectionWrapper,
     PromptSelectionWrapper,
 )
-from src.training import MultitaskAdapterTrainer, MultitaskTrainer
+from src.training import (
+    MultitaskAdapterTrainer,
+    MultitaskTrainer,
+    MLMMultitaskTrainer,
+    MLMMultitaskAdapterTrainer,
+)
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -167,6 +173,18 @@ class DataTrainingArguments:
     prompt_ids: List[int] = field(
         default=None,
         metadata={"help": "Which prompt to use for each dataset"}
+    )
+    do_mlm: bool = field(
+        default=False,
+        metadata={"help": "Whether to do additional MLM on top of classification training."}
+    )
+    mlm_probability: float = field(
+        default=0.15,
+        metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+    )
+    mlm_weight: float = field(
+        default=1.0,
+        metadata={"help": "Weight of mlm_loss in the combine loss function."}
     )
 
     def __post_init__(self):
@@ -1013,7 +1031,19 @@ def main():
             training_args.early_stopping_threshold,
         ))
 
-    trainer_class = MultitaskAdapterTrainer if adapter_args.train_adapter else MultitaskTrainer
+    if data_args.do_mlm:
+        trainer_class = MLMMultitaskAdapterTrainer if adapter_args.train_adapter else MLMMultitaskTrainer
+        mlm_collator = DataCollatorForLanguageModeling(
+            tokenizer=tokenizer,
+            mlm_probability=data_args.mlm_probability,
+        )
+        trainer_class = partial(
+            trainer_class,
+            mlm_data_collator=mlm_collator,
+            mlm_weight=data_args.mlm_weight,
+        )
+    else:
+        trainer_class = MultitaskAdapterTrainer if adapter_args.train_adapter else MultitaskTrainer
     trainer = trainer_class(
         model=model,
         args=training_args,

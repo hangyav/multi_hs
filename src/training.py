@@ -438,3 +438,52 @@ class MultitaskAdapterTrainer(MultitaskTrainerMixin, AdapterTrainer):
 
         # Good practice: save your training arguments together with the trained model
         torch.save(self.args, os.path.join(output_dir, "training_args.bin"))
+
+
+class MLMTrainerMixin(Trainer):
+
+    def __init__(self, mlm_data_collator, mlm_weight=1.0, *args, **kwargs):
+        self.mlm_data_collator = mlm_data_collator
+        self.mlm_weight = mlm_weight
+        assert 'ForMaskedLM' in kwargs['model'].__class__.__name__, 'Currently only MLM models are supported!'
+        super().__init__(*args, **kwargs)
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        if self.label_smoother is not None and "labels" in inputs:
+            labels = inputs.pop("labels")
+        else:
+            labels = None
+        outputs = model(**inputs)
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if labels is not None:
+            loss = self.label_smoother(outputs, labels)
+        else:
+            # We don't use .loss here since the model may return tuples instead of ModelOutput.
+            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+        # MLM loss
+        # XXX This should probably go the the train function of Trainer but
+        # this is less invasive
+        mlm_inputs = self.mlm_data_collator([
+            item for item in inputs['input_ids'].to('cpu')
+        ])
+        mlm_inputs = self._prepare_inputs(mlm_inputs)
+
+        mlm_outputs = model(**mlm_inputs)
+        mlm_loss = mlm_outputs["loss"] if isinstance(mlm_outputs, dict) else mlm_outputs[0]
+
+        loss += mlm_loss * self.mlm_weight
+
+        return (loss, outputs) if return_outputs else loss
+
+
+class MLMMultitaskTrainer(MLMTrainerMixin, MultitaskTrainer):
+    pass
+
+
+class MLMMultitaskAdapterTrainer(MLMTrainerMixin, MultitaskAdapterTrainer):
+    pass
