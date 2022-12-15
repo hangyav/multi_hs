@@ -77,13 +77,13 @@ def reduce_dataset_if_needed(dataset, num_samples, data_selector_method,
         dataset = random_select(
             dataset,
             num_samples,
-            seed,
+            seed=seed,
         )
     elif data_selector_method == 'per_label':
         dataset = per_label_select(
             dataset,
             num_samples,
-            seed,
+            seed=seed,
         )
     else:
         raise NotADirectoryError(f'Data selection method not supported: {data_selector_method}')
@@ -103,8 +103,11 @@ def random_select(dataset, num_sample, min_per_label=1, seed=0):
         label: min_per_label
         for label in labels
     }
-    already_selected = set(res_dataset['id'])
-    tmp_lst = [item for item in dataset if item['id'] not in already_selected]
+    uniq_col = 'id'
+    if uniq_col not in res_dataset:
+        uniq_col = 'text'
+    already_selected = set(res_dataset[uniq_col])
+    tmp_lst = [item for item in dataset if item[uniq_col] not in already_selected]
     random.Random(seed).shuffle(tmp_lst)
 
     for item in tmp_lst:

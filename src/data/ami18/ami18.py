@@ -20,7 +20,7 @@ _DATA_URL = None
 class AMI18(datasets.GeneratorBasedBuilder):
     BUILDER_CONFIGS = [
         datasets.BuilderConfig(name=f'{lang}-{type}', version=datasets.Version("1.0.0"))
-        for type in ['misogyny', 'misogyny_category', 'target']
+        for type in ['misogyny', 'misogyny_category', 'target'] + ['misogyny_category_ab1']  # ab -> ablation
         for lang in ['en', 'it']
     ]
 
@@ -48,6 +48,22 @@ class AMI18(datasets.GeneratorBasedBuilder):
                             'stereotype',
                             'dominance',
                             'derailing',
+                            'sexual_harassment',
+                            'discredit',
+                        ]
+                    ),
+                }
+            )
+        elif self.config.name in ['en-misogyny_category_ab1', 'it-misogyny_category_ab1']:
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('int64'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
+                        names=[
+                            'stereotype',
+                            'dominance',
+                            # 'derailing',
                             'sexual_harassment',
                             'discredit',
                         ]
@@ -138,13 +154,17 @@ class AMI18(datasets.GeneratorBasedBuilder):
                     label = 'misogyny' if misogyny == '1' else 'non-misogyny'
                 elif data_type == 'misogyny_category':
                     label = category
+                elif data_type == 'misogyny_category_ab1':
+                    label = category
+                    if label == 'derailing':
+                        continue
                 elif data_type == 'target':
                     label = target
                     if label == 'pass':
                         # there seems to be at least one annotation error
                         label = 'passive'
                 else:
-                    raise NotADirectoryError('Should not get here!')
+                    raise ValueError('Should not get here!')
 
                 if label == '0':
                     continue

@@ -73,6 +73,23 @@ PVP_DICT['ami18'] = {
             3: (1, 1),
         },
     ),
+    'en-misogyny_category_ab1': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                "stereotype": ["stereotypical"],
+                "dominance": ["dominance"],
+                # "derailing": ["derailing"],
+                "sexual_harassment": ["harassment"],
+                "discredit": ["discrediting"],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
     'en-target': DatasetPVPs(
         prompt_templates=[
             # ManualTemplateFactory('{"placeholder":"text_a"} It was targeted {"mask"}'),

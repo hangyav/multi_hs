@@ -43,6 +43,9 @@ class LargeScaleAbuse(datasets.GeneratorBasedBuilder):
         datasets.BuilderConfig(
             name="fine_grained_ab1", version=VERSION  # ablation study
         ),
+        datasets.BuilderConfig(
+            name="fine_grained_ab2", version=VERSION  # ablation study
+        ),
     ]
 
     def _info(self):
@@ -62,6 +65,19 @@ class LargeScaleAbuse(datasets.GeneratorBasedBuilder):
                     "text": datasets.Value("string"),
                     "label": datasets.features.ClassLabel(names=[
                         # 'abusive',
+                        'hateful',
+                        # 'spam',
+                        'normal'
+                    ]),
+                }
+            )
+        elif type == 'fine_grained_ab2':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        'abusive',
                         'hateful',
                         # 'spam',
                         'normal'
@@ -129,6 +145,9 @@ class LargeScaleAbuse(datasets.GeneratorBasedBuilder):
 
                 if type == 'fine_grained_ab1':
                     if label in {'abusive', 'spam'}:
+                        continue
+                elif type == 'fine_grained_ab2':
+                    if label in {'spam'}:
                         continue
 
                 item = {
