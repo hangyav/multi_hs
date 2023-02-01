@@ -69,6 +69,7 @@ class HateSpeech18(datasets.GeneratorBasedBuilder):
         if self.config.name == "default":
             features = datasets.Features(
                 {
+                    "id": datasets.Value("int64"),
                     "text": datasets.Value("string"),
                     "user_id": datasets.Value("int64"),
                     "subforum_id": datasets.Value("int64"),
@@ -79,6 +80,7 @@ class HateSpeech18(datasets.GeneratorBasedBuilder):
         elif self.config.name == "binary":
             features = datasets.Features(
                 {
+                    "id": datasets.Value("int64"),
                     "text": datasets.Value("string"),
                     "user_id": datasets.Value("int64"),
                     "subforum_id": datasets.Value("int64"),
@@ -138,7 +140,7 @@ class HateSpeech18(datasets.GeneratorBasedBuilder):
 
             next(csv_reader)
 
-            for row in csv_reader:
+            for idx, row in enumerate(csv_reader):
                 file_id, user_id, subforum_id, num_contexts, label = row
 
                 if self.config.name == 'binary' and label not in ['noHate', 'hate']:
@@ -151,6 +153,7 @@ class HateSpeech18(datasets.GeneratorBasedBuilder):
                     text = file.read()
 
                 data.append({
+                    "id": idx,
                     "text": text,
                     "user_id": user_id,
                     "subforum_id": subforum_id,

@@ -77,7 +77,7 @@ def get_prediction_logits(trainer, eval_dataset=None):
                 outputs_at_mask = model.extract_at_mask(outputs, batch)
             label_words_logits = model.verbalizer.process_outputs(outputs_at_mask, batch=batch)
 
-            yield batch['input_ids'].to('cpu'), outputs_at_mask.to('cpu'), label_words_logits.to('cpu')
+            yield batch['input_ids'].to('cpu'), outputs_at_mask.to('cpu'), label_words_logits.to('cpu'), batch['label'].to('cpu')
 
 
 def lineplot_and_save(data, output_path, x=None, y=None, format='pdf',

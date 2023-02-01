@@ -30,6 +30,7 @@ from functools import partial
 import datasets
 from datasets import load_dataset, load_metric
 
+from torch.nn.functional import softmax
 import transformers
 from transformers import (
     # AdapterConfig,
@@ -167,7 +168,8 @@ class DataTrainingArguments:
     train_sampling: Optional[str] = field(
         default=None,
         metadata={
-            "help": "Data sampling for label imbalance. Options: balanced_over"
+            "help": "Data sampling for label imbalance. Options: balanced_over,"
+            "a global_balanced_over"
         },
     )
     prompt_ids: List[int] = field(
@@ -803,7 +805,7 @@ def get_models(model_args, data_args, training_args, adapter_args,
 
 
 def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
-                    training_args):
+                    training_args, model_args, dataset_metadata):
     # Preprocessing the datasets
     # Again, we try to have some nice defaults but don't hesitate to tweak
     # to your use case.
@@ -884,11 +886,28 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
                         random_state=training_args.seed,
                         load_from_cache_file=not data_args.overwrite_cache,
                     )
-                else:
-                    raise NotImplementedError(f'Unknown sampling method: {data_args.train_sampling}')
-                logger.info(f'Training dataset resampled with {data_args.train_sampling}')
+                    logger.info(f'Training dataset resampled with {data_args.train_sampling}')
 
             train_dataset[dataset_name] = train_dataset_tmp
+        if data_args.train_sampling is not None:
+            if data_args.train_sampling == 'global_balanced_over':
+                assert model_args.model_type == 'prompt'
+                train_dataset = sampling.global_balanced_random_oversample(
+                    train_dataset,
+                    ['id', 'text', 'label'],
+                    label_map={
+                        f'{dataset_name}-{dataset_config}': dataset_metadata[f'{dataset_name}-{dataset_config}'][3].get_label_map(pattern_id, train_dataset[f'{dataset_name}-{dataset_config}'].features['label'].names)
+                        for dataset_name, dataset_config, pattern_id in zip(
+                            data_args.dataset_name,
+                            data_args.dataset_config_name,
+                            data_args.prompt_ids
+                        )
+                    },
+                    label_col='label',
+                    random_state=training_args.seed,
+                    load_from_cache_file=not data_args.overwrite_cache,
+                )
+                logger.info(f'Training dataset resampled with {data_args.train_sampling}')
 
     eval_dataset = None
     if training_args.do_eval:
@@ -957,6 +976,8 @@ def main():
         config,
         data_args,
         training_args,
+        model_args,
+        dataset_metadata
     )
 
     # Get the metric function
@@ -1212,6 +1233,7 @@ def main():
             'variance': np.var,
             'STD': np.std,
         }
+        token_list = tokenizer.convert_ids_to_tokens(range(len(tokenizer)))
 
         for task_name, dataset_name, dataset_config_name in zip(
             data_args.task_name,
@@ -1223,12 +1245,18 @@ def main():
             _, label_list, is_regression, _ = dataset_metadata[task]
             res_dict = {}
             pooled_logits = list()
+            pooled_label_logits = list()
+            num_per_label = [0] * len(label_list)
 
-            for input_ids_batch, outputs_batch, label_logits_batch in get_prediction_logits(
+            for input_ids_batch, outputs_batch, label_logits_batch, gold_labels_batch in get_prediction_logits(
                 trainer,
                 eval_dataset={task: dataset}
             ):
-                for token_ids, output_logits, label_logits in zip(input_ids_batch, outputs_batch, label_logits_batch):
+                for token_ids, output_logits, label_logits, gold_label_idx in zip(input_ids_batch, outputs_batch, label_logits_batch, gold_labels_batch):
+                    output_logits = softmax(output_logits).numpy().tolist()
+                    label_logits = softmax(label_logits).numpy().tolist()
+                    gold_label = label_list[gold_label_idx]
+                    num_per_label[gold_label_idx] += 1
                     last_idx = 0
                     for idx in range(len(token_ids)):
                         if token_ids[idx] == tokenizer.pad_token_id:
@@ -1240,23 +1268,39 @@ def main():
                     print(tokenizer.convert_tokens_to_string(
                         tokenizer.convert_ids_to_tokens(token_ids))
                     )
-                    print('Token logits:')
-                    print(output_logits)
 
                     for k, v in np_descriptors.items():
-                        val = v(output_logits.numpy())
+                        val = v(output_logits)
                         print(f'{k}: {val}')
                         res_dict.setdefault(f'output_logits_{k}', list()).append(val)
 
-                    pooled_logits.append(output_logits.numpy())
+                    pooled_logits.append(output_logits)
+                    pooled_label_logits.append(label_logits)
 
+                    print(f'Gold label: {gold_label}')
+                    prediction = label_list[np.argmax(label_logits)]
+                    print(f'Predicted label: {prediction}')
                     print('Label logits:')
-                    print(label_logits)
+                    print_label_logits(label_list, label_logits)
                     print()
 
             print('Dataset statistics:')
             for k, v in res_dict.items():
                 print(f'{k}: {np.mean(v)}')
+
+            print('Averaged label logits:')
+            print_label_logits(label_list, np.mean(pooled_label_logits, axis=0).tolist())
+            print('Averaged & normalized label logits:')
+            print_label_logits(label_list, (np.mean(pooled_label_logits, axis=0)/num_per_label).tolist())
+            print('Number per label:')
+            print_label_logits(label_list, num_per_label)
+
+            # TODO topK tokens
+            k = 20
+            avg_logits = np.mean(pooled_logits, axis=0)
+            top_k_token_ids = np.argsort(avg_logits)[-k:][::-1]
+            print(f'Tok-{k} predicted tokens:')
+            print_label_logits(np.array(token_list)[top_k_token_ids].tolist(), np.array(avg_logits)[top_k_token_ids].tolist() )
 
             lineplot_and_save(
                 np.mean(pooled_logits, axis=0),
@@ -1266,6 +1310,18 @@ def main():
                 ),
 
             )
+            lineplot_and_save(
+                np.mean(pooled_label_logits, axis=0),
+                os.path.join(
+                    training_args.output_dir,
+                    f'{task}_pooled_label_logits.pdf'
+                ),
+
+            )
+
+
+def print_label_logits(labels, logits):
+    print(', '.join(f'{label}={logit:4f}' for label, logit in zip(labels, logits)))
 
 
 def _mp_fn(index):

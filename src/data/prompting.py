@@ -82,6 +82,15 @@ class DatasetPVPs():
 
         return PVP(template=template, verbalizer=verbalizer)
 
+    def get_label_map(self, id, label_lst=None):
+        verbs = self.prompt_verbalizers[self.pvps[id][1]].verbs
+        if label_lst is None:
+            return verbs
+        return {
+            idx: verbs[label]
+            for idx, label in enumerate(label_lst)
+        }
+
 
 PVP_DICT = dict()
 
