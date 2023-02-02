@@ -56,7 +56,7 @@ def test_per_label_select_random_seed(hasoc19_en_fine_grained):
         assert item1 == item2
 
 
-def test_global_balanced_oversample(hate_speech18_binary, told_br_find_grained, tokenizer):
+def test_global_balanced_oversample(hate_speech18_binary, told_br_find_grained):
     data_dict = {
         'hate_speech18': hate_speech18_binary['train'],
         'told_br': told_br_find_grained['train'],
@@ -75,7 +75,7 @@ def test_global_balanced_oversample(hate_speech18_binary, told_br_find_grained, 
 
     assert res.keys() == data_dict.keys()
     c = Counter(
-        get_pvp(dataset).get_label_map(pid, dataset.features['label'].names)[label]
+        get_pvp(dataset).get_label_map(pid, dataset.features['label'].names)[label][0]
         for (key, dataset), pid in zip(res.items(), [0, 0])
         for label in dataset['label']
     )

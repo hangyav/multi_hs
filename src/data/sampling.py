@@ -82,9 +82,19 @@ def global_balanced_random_oversample(
         for feature in features:
             res.setdefault(key, dict()).setdefault(feature, list()).append(item[feature])
 
-    res_data_dict = DatasetDict({
-        key: Dataset.from_dict(dataset)
-        for key, dataset in res.items()
-    })
+    res_data_dict = dict()
+    for key, dataset in res.items():
+        ds = Dataset.from_dict(dataset)
+        orig = dataset_dict[key]
+        ds._info = orig._info
+        res_data_dict[key] = ds
 
-    return res_data_dict
+    return DatasetDict(res_data_dict)
+
+
+    # res_data_dict = DatasetDict({
+    #     key: Dataset.from_dict(dataset)
+    #     for key, dataset in res.items()
+    # })
+    #
+    # return res_data_dict
