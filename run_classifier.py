@@ -48,6 +48,7 @@ from transformers import (
     AutoModelForMaskedLM,
     BertForMaskedLM,
     RobertaForMaskedLM,
+    XLMRobertaForMaskedLM,
     DataCollatorForLanguageModeling,
 )
 from transformers.trainer_utils import get_last_checkpoint
@@ -697,6 +698,7 @@ def get_openprompts_model_name(model):
         return {
             BertForMaskedLM: 'bert',
             RobertaForMaskedLM: 'roberta',
+            XLMRobertaForMaskedLM: 'roberta'
         }[type(model)]
     except Exception:
         raise ValueError(f'Model type not supported: {type(model)}')

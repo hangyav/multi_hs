@@ -48,7 +48,7 @@ class SRW16(datasets.GeneratorBasedBuilder):
     def _split_generators(self, dl_manager):
         url = os.getenv("HASPEEDE3_URL")
         assert url, 'Set HASPEEDE3_URL environment variable to point to downloaded tweets.'
-        data_type = self.config.name.split('_')[2]
+        data_type = self.config.name.split('_')[1]
         if data_type == 'text':
             file = 'training_textual.csv'
         else:
@@ -79,7 +79,9 @@ class SRW16(datasets.GeneratorBasedBuilder):
         ]
 
     def _generate_examples(self, filepath, split):
-        data_type = self.config.name.split('_')[2]
+        data_type = self.config.name.split('_')[1]
+        if data_type != 'text':
+            raise NotImplementedError()
         dataset_type = self.config.name.split('_')[0]
         data = list()
         with open(filepath) as fin:
