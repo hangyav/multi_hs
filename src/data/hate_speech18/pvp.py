@@ -15,6 +15,8 @@ PVP_DICT['hate_speech18'] = {
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
             MixedTemplateFactory('{"soft": "hate_speech18"} {"soft": "binary"} {"placeholder":"text_a"} It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "What type of abusive content does the text have?"} {"placeholder":"text_a"} {"mask"}'),
+            MixedTemplateFactory('{"placeholder":"text_a"} {"soft": "What type of abusive content does the text have?"} {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -31,6 +33,8 @@ PVP_DICT['hate_speech18'] = {
             1: (0, 1),
             2: (1, 0),
             3: (1, 1),
+            4: (2, 0),
+            5: (3, 1),
         },
     ),
 }

@@ -32,6 +32,8 @@ PVP_DICT['germeval18'] = {
     'fine_grained': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+            MixedTemplateFactory('{"soft": "What type of abusive content does the text have?"} {"placeholder":"text_a"} {"mask"}'),
+            MixedTemplateFactory('{"placeholder":"text_a"} {"soft": "What type of abusive content does the text have?"} {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -43,6 +45,8 @@ PVP_DICT['germeval18'] = {
         ],
         pvps={
             0: (0, 0),
+            1: (1, 0),
+            2: (2, 0),
         },
     ),
 }
