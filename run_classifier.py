@@ -57,6 +57,7 @@ from transformers.utils.versions import require_version
 
 from src.data import sampling
 from src.data.utils import reduce_dataset_if_needed
+from src.data.preprocess import PREPROCESSING_FUNCTIONS
 from src.modeling import (
     MultiTaskModelWrapper,
     HeadSelectionWrapper,
@@ -79,15 +80,15 @@ require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/text
 logger = logging.getLogger(__name__)
 
 
-def setup_max_samples(max_sample, num):
-    if max_sample is None:
-        max_sample = [None] * num
-    elif len(max_sample) == 1:
-        max_sample = max_sample * num
-    elif len(max_sample) == 2 and num > 2:
+def setup_multi_parameter(parameter, num, null_value):
+    if parameter is None:
+        parameter = [None] * num
+    elif len(parameter) == 1:
+        parameter = parameter * num
+    elif len(parameter) == 2 and num > 2:
         # first value for all but last
-        max_sample = [max_sample[0]] * (num-1) + [max_sample[1]]
-    max_sample = [None if item == -1 else item for item in max_sample]
+        parameter = [parameter[0]] * (num-1) + [parameter[1]]
+    max_sample = [None if item == null_value else item for item in parameter]
 
     return max_sample
 
@@ -159,6 +160,15 @@ class DataTrainingArguments:
     data_selector_method_predict: Optional[str] = field(
         default='stratify', metadata={"help": "If max_train/eval/predict_sample is set, how to subsample: {per_label, stratify}"}
     )
+    preprocess_steps: Optional[List[str]] = field(
+        default=None,
+        metadata={
+            "help": "List of preprocessing steps for each datasets."
+            " 'no' for nothing other than plain tokenization. Multiple stesp"
+            " per dataset is possible using ':' as separator."
+            f" Options: {PREPROCESSING_FUNCTIONS.keys()}"
+        },
+    )
     train_file: Optional[str] = field(
         default=None, metadata={"help": "A csv or a json file containing the training data."}
     )
@@ -215,21 +225,40 @@ class DataTrainingArguments:
         if self.train_sampling is not None and self.train_sampling.lower() == 'none':
             self.train_sampling = None
 
-        self.max_train_samples = setup_max_samples(
+        self.max_train_samples = setup_multi_parameter(
             self.max_train_samples,
-            len(self.dataset_name)
+            len(self.dataset_name),
+            -1,
         )
         assert len(self.max_train_samples) == len(self.dataset_name)
-        self.max_eval_samples = setup_max_samples(
+        self.max_eval_samples = setup_multi_parameter(
             self.max_eval_samples,
-            len(self.dataset_name)
+            len(self.dataset_name),
+            -1,
         )
         assert len(self.max_eval_samples) == len(self.dataset_name)
-        self.max_predict_samples = setup_max_samples(
+        self.max_predict_samples = setup_multi_parameter(
             self.max_predict_samples,
-            len(self.dataset_name)
+            len(self.dataset_name),
+            -1,
         )
         assert len(self.max_predict_samples) == len(self.dataset_name)
+
+        if self.preprocess_steps is not None:
+            self.preprocess_steps = [
+                item.split(':')
+                for item in self.preprocess_steps
+            ]
+        self.preprocess_steps = setup_multi_parameter(
+            self.preprocess_steps,
+            len(self.dataset_name),
+            ['no'],
+        )
+        assert len(self.preprocess_steps) == len(self.dataset_name)
+        for preproc_lst in self.preprocess_steps:
+            if preproc_lst is not None:
+                for preproc in preproc_lst:
+                    assert preproc in PREPROCESSING_FUNCTIONS.keys(), f'Preprocessing step {preproc} not supported.'
 
 
 @dataclass
@@ -444,16 +473,19 @@ def get_datasets(model_args, data_args, training_args):
     # one local process can concurrently download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        raw_datasets = {
-            f'{dataset_name}-{dataset_config_name}': load_dataset(
-                importlib.import_module(
-                    f'src.data.{dataset_name}.{dataset_name}'
-                ).__file__,
-                dataset_config_name,
-                cache_dir=model_args.cache_dir,
+        raw_datasets = [
+            (
+                f'{dataset_name}-{dataset_config_name}',
+                load_dataset(
+                    importlib.import_module(
+                        f'src.data.{dataset_name}.{dataset_name}'
+                    ).__file__,
+                    dataset_config_name,
+                    cache_dir=model_args.cache_dir,
+                )
             )
             for dataset_name, dataset_config_name in zip(data_args.dataset_name, data_args.dataset_config_name)
-        }
+        ]
     else:
         # TODO need to set the right adapter name and handle label2id conversion
         raise NotImplementedError('Not supported currently.')
@@ -495,7 +527,7 @@ def get_datasets(model_args, data_args, training_args):
         get_pvp = lambda x: None
     # Labels
     # Trying to have good defaults here, don't hesitate to tweak to your needs.
-    for dataset_name, dataset in raw_datasets.items():
+    for dataset_name, dataset in raw_datasets:
         is_regression = dataset["train"].features["label"].dtype in ["float32", "float64"]
         if is_regression:
             num_labels = 1
@@ -812,7 +844,7 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
     # Again, we try to have some nice defaults but don't hesitate to tweak
     # to your use case.
     sentence_keys_dict = dict()
-    for dataset_name, dataset in raw_datasets.items():
+    for dataset_name, dataset in raw_datasets:
         non_label_column_names = [name for name in dataset["train"].column_names if name != "label"]
         if "sentence1" in non_label_column_names and "sentence2" in non_label_column_names:
             sentence1_key, sentence2_key = "sentence1", "sentence2"
@@ -856,20 +888,40 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
         return result
 
     with training_args.main_process_first(desc="dataset map pre-processing"):
-        raw_datasets = {
-            dataset_name: dataset.map(
-                partial(preprocess_function, *sentence_keys_dict[dataset_name]),
-                batched=True,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc=f"Running tokenizer on dataset: {dataset_name}",
+        tmp_lst = list()
+        for (dataset_name, dataset), preproc_lst in zip(raw_datasets, data_args.preprocess_steps):
+            if preproc_lst is not None:
+                for preproc in preproc_lst:
+                    dataset = dataset.map(
+                        partial(
+                            PREPROCESSING_FUNCTIONS[preproc],
+                            *sentence_keys_dict[dataset_name]
+                        ),
+                        batched=True,
+                        load_from_cache_file=not data_args.overwrite_cache,
+                        desc=f"Running preprocessing {preproc} on dataset: {dataset_name}",
+                    )
+            tmp_lst.append((dataset_name, dataset))
+        raw_datasets = tmp_lst
+        
+        raw_datasets = [
+            (
+                dataset_name,
+                dataset.map(
+                    partial(preprocess_function, *
+                            sentence_keys_dict[dataset_name]),
+                    batched=True,
+                    load_from_cache_file=not data_args.overwrite_cache,
+                    desc=f"Running tokenizer on dataset: {dataset_name}",
+                )
             )
-            for dataset_name, dataset in raw_datasets.items()
-        }
+            for dataset_name, dataset in raw_datasets
+        ]
 
     train_dataset = None
     if training_args.do_train:
         train_dataset = dict()
-        for (dataset_name, dataset), max_train_samples in zip(raw_datasets.items(), data_args.max_train_samples):
+        for (dataset_name, dataset), max_train_samples in zip(raw_datasets, data_args.max_train_samples):
             if "train" not in dataset:
                 raise ValueError(f"--do_train requires a train dataset in {dataset_name}")
             train_dataset_tmp = dataset["train"]
@@ -914,7 +966,7 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
     eval_dataset = None
     if training_args.do_eval:
         eval_dataset = dict()
-        for (dataset_name, dataset), max_eval_samples in zip(raw_datasets.items(), data_args.max_eval_samples):
+        for (dataset_name, dataset), max_eval_samples in zip(raw_datasets, data_args.max_eval_samples):
             if "validation" not in dataset:
                 raise ValueError(f"--do_eval requires a validation dataset in {dataset_name}")
 
@@ -931,7 +983,7 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
     predict_dataset = None
     if training_args.do_predict:
         predict_dataset = dict()
-        for (dataset_name, dataset), max_predict_samples in zip(raw_datasets.items(), data_args.max_predict_samples):
+        for (dataset_name, dataset), max_predict_samples in zip(raw_datasets, data_args.max_predict_samples):
             if "test" not in dataset:
                 raise ValueError(f"--do_predict requires a test dataset in {dataset_name}")
 
