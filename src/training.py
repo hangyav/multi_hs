@@ -22,6 +22,7 @@ from transformers.file_utils import is_torch_tpu_available, WEIGHTS_NAME
 from transformers.modeling_utils import unwrap_model
 from transformers.deepspeed import deepspeed_init
 from transformers.utils import logging
+from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 import torch
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.sampler import RandomSampler
@@ -402,11 +403,75 @@ class MultitaskTrainerMixin(object):
         return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
 
 
-class MultitaskTrainer(MultitaskTrainerMixin, Trainer):
+class CustomLossTrainerMixin(object):
+    def __init__(self, loss_fct=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.loss_fct = loss_fct
+        if self.loss_fct is not None:
+            self.loss_fct = self.loss_fct.to(self.model.device)
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        """
+        How the loss is computed by Trainer. By default, all models return the loss in the first element.
+        """
+        if self.label_smoother is not None and "labels" in inputs:
+            labels = inputs.pop("labels")
+        else:
+            labels = None
+
+        outputs = model(**inputs)
+
+        if 'label' in inputs:
+            outputs = self._alter_loss(outputs, inputs['label'])
+
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if labels is not None:
+            if unwrap_model(model)._get_name() in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            else:
+                loss = self.label_smoother(outputs, labels)
+        else:
+            if isinstance(outputs, dict) and "loss" not in outputs:
+                raise ValueError(
+                    "The model did not return a loss from the inputs, only the following keys: "
+                    f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
+                )
+            # We don't use .loss here since the model may return tuples instead of ModelOutput.
+            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+        return (loss, outputs) if return_outputs else loss
+
+    def _alter_loss(self, model_outputs, labels):
+        if self.loss_fct is None:
+            return model_outputs
+
+        if isinstance(model_outputs, dict):
+            logits = model_outputs["logits"]
+        else:
+            logits = model_outputs[1]
+
+        # TODO currently mulitdataset setups is not supported
+        # task_name should be used from the input to select loss_fct from
+        # a dict in the Multitask trainers
+        loss = self.loss_fct(logits, labels)
+
+        if isinstance(model_outputs, dict):
+            model_outputs["loss"] = loss
+        else:
+            model_outputs = (loss,) + model_outputs[1:]
+
+        return model_outputs
+
+
+class MultitaskTrainer(CustomLossTrainerMixin, MultitaskTrainerMixin, Trainer):
     pass
 
 
-class MultitaskAdapterTrainer(MultitaskTrainerMixin, AdapterTrainer):
+class MultitaskAdapterTrainer(CustomLossTrainerMixin, MultitaskTrainerMixin, AdapterTrainer):
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         # If we are executing this function, we are the process zero, so we don't check for that.
@@ -440,7 +505,7 @@ class MultitaskAdapterTrainer(MultitaskTrainerMixin, AdapterTrainer):
         torch.save(self.args, os.path.join(output_dir, "training_args.bin"))
 
 
-class MLMTrainerMixin(Trainer):
+class MLMTrainerMixin(object):
 
     def __init__(self, mlm_data_collator, mlm_weight=1.0, *args, **kwargs):
         self.mlm_data_collator = mlm_data_collator
@@ -449,21 +514,7 @@ class MLMTrainerMixin(Trainer):
         super().__init__(*args, **kwargs)
 
     def compute_loss(self, model, inputs, return_outputs=False):
-        if self.label_smoother is not None and "labels" in inputs:
-            labels = inputs.pop("labels")
-        else:
-            labels = None
-        outputs = model(**inputs)
-        # Save past state if it exists
-        # TODO: this needs to be fixed and made cleaner later.
-        if self.args.past_index >= 0:
-            self._past = outputs[self.args.past_index]
-
-        if labels is not None:
-            loss = self.label_smoother(outputs, labels)
-        else:
-            # We don't use .loss here since the model may return tuples instead of ModelOutput.
-            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+        loss, outputs = super().compute_loss(model, inputs, return_outputs=return_outputs)
 
         # MLM loss
         # XXX This should probably go the the train function of Trainer but

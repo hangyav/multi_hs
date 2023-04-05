@@ -30,6 +30,7 @@ from functools import partial
 import datasets
 from datasets import load_dataset, load_metric
 
+from torch.nn import CrossEntropyLoss
 from torch.nn.functional import softmax
 import transformers
 from transformers import (
@@ -70,6 +71,7 @@ from src.training import (
     MLMMultitaskTrainer,
     MLMMultitaskAdapterTrainer,
 )
+from src import losses
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -199,6 +201,12 @@ class DataTrainingArguments:
         default=1.0,
         metadata={"help": "Weight of mlm_loss in the combine loss function."}
     )
+    loss_functions: Optional[List[str]] = field(
+        default=None,
+        metadata={
+            "help": "Loss function mainly to address data imbalance. Defualt: none"
+        },
+    )
 
     def __post_init__(self):
         assert self.dataset_name is not None and self.dataset_config_name is not None
@@ -259,6 +267,14 @@ class DataTrainingArguments:
             if preproc_lst is not None:
                 for preproc in preproc_lst:
                     assert preproc in PREPROCESSING_FUNCTIONS.keys(), f'Preprocessing step {preproc} not supported.'
+
+        self.loss_functions = setup_multi_parameter(
+            self.loss_functions,
+            len(self.dataset_name),
+            'none',
+        )
+        assert len(self.loss_functions) == len(self.dataset_name)
+        assert len(self.loss_functions) == 1 or all(item is None for item in self.loss_functions), 'Custom loss function is only supported in single dataset setup.'
 
 
 @dataclass
@@ -1006,6 +1022,33 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
     return train_dataset, eval_dataset, predict_dataset
 
 
+def get_loss_fct(train_dataset, data_args):
+    if train_dataset is None:
+        return None
+
+    # TODO extend to multidataset setup
+    loss_str = data_args.loss_functions[0]
+    train_dataset = train_dataset[list(train_dataset.keys())[0]]
+    labels_list = train_dataset['label']
+    classes = sorted(set(labels_list))
+
+    if loss_str is None or loss_str == 'CE':
+        return None
+    if loss_str == 'InvCE':
+        return CrossEntropyLoss(
+            weight=losses.labels_to_class_weights(
+                labels_list=labels_list,
+                classes=classes,
+            )
+        )
+    if loss_str == 'VS':
+        return losses.VSLoss(
+            cls_num_list=losses.count_labels(labels_list, classes),
+        )
+
+    raise ValueError(f'Loss function {loss_str} not supported.')
+
+
 def main():
     model_args, data_args, training_args, adapter_args = setup()
 
@@ -1119,6 +1162,8 @@ def main():
         )
     else:
         trainer_class = MultitaskAdapterTrainer if adapter_args.train_adapter else MultitaskTrainer
+
+    loss_fct = get_loss_fct(train_dataset, data_args)
     trainer = trainer_class(
         model=model,
         args=training_args,
@@ -1128,6 +1173,7 @@ def main():
         tokenizer=tokenizer,
         data_collator=data_collator,
         callbacks=callbacks,
+        loss_fct=loss_fct,
     )
 
     # Training
