@@ -17,12 +17,12 @@ PVP_DICT['ihsc'] = {
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
-                'noHate': ["neutral"],
-                'Hate': ["hate"]
+                'no': ["neutral"],
+                'yes': ["hate"]
             }),
             ManualVerbalizerFactory({
-                "noHate": ["No"],
-                "Hate": ["Sì"],
+                "no": ["No"],
+                "yes": ["Sì"],
             }),
         ],
         pvps={
@@ -37,12 +37,12 @@ PVP_DICT['ihsc'] = {
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
-                'noStereotype': ["neutral"],
-                'Stereotype': ["stereotypical"]
+                'no': ["neutral"],
+                'yes': ["stereotypical"]
             }),
             ManualVerbalizerFactory({
-                "noStereotype": ["No"],
-                "Stereotype": ["Sì"],
+                "no": ["No"],
+                "yes": ["Sì"],
             }),
         ],
         pvps={
