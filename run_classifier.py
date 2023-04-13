@@ -421,6 +421,9 @@ class MyAdapterArguments(MultiLingAdapterArguments):
             assert self.language is not None
             assert len(self.load_lang_adapter) == len(self.language)
 
+        if self.fuse_adapters is not None and len(self.fuse_adapters) == 0:
+            self.fuse_adapters = None
+
 
 def setup():
     # See all possible arguments in src/transformers/training_args.py

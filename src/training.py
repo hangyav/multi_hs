@@ -514,7 +514,12 @@ class MLMTrainerMixin(object):
         super().__init__(*args, **kwargs)
 
     def compute_loss(self, model, inputs, return_outputs=False):
-        loss, outputs = super().compute_loss(model, inputs, return_outputs=return_outputs)
+        res = super().compute_loss(model, inputs, return_outputs=return_outputs)
+        if return_outputs:
+            loss, outputs = res
+        else:
+            loss = res
+            outputs = None
 
         # MLM loss
         # XXX This should probably go the the train function of Trainer but
