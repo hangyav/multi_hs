@@ -321,6 +321,16 @@ class ModelArguments:
             logger.info('Fast tokenizer is not supported by prompts. Ignoring')
             self.use_fast_tokenizer = False
 
+        if self.tokenizer_name.startswith('local'):
+            local = os.getenv('HF_LOCAL_MODELS')
+            assert local is not None, 'HF_LOCAL_MODELS is not set'
+            self.tokenizer_name = os.path.join(local, '/'.join(self.tokenizer_name.split('/')[1:]))
+
+        if self.model_name_or_path.startswith('local'):
+            local = os.getenv('HF_LOCAL_MODELS')
+            assert local is not None, 'HF_LOCAL_MODELS is not set'
+            self.model_name_or_path = os.path.join(local, '/'.join(self.model_name_or_path.split('/')[1:]))
+
 
 @dataclass
 class MyTrainingArguments(TrainingArguments):
