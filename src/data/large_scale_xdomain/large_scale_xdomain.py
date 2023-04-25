@@ -11,7 +11,7 @@ _CITATION = """\
 _DESCRIPTION = """\
 """
 
-_DATA_URL = "https://github.com/HKUST-KnowComp/MLMA_hate_speech/blob/master/hate_speech_mlma.zip?raw=true"
+_DATA_URL = "https://raw.githubusercontent.com/avaapm/hatespeech/master/dataset_v2/hate_speech_dataset_v2.csv"
 
 _HOME_PAGE = "https://github.com/avaapm/hatespeech"
 
@@ -117,10 +117,10 @@ class LargeScaleXDomain(datasets.GeneratorBasedBuilder):
             for row in csv_reader:
                 id, langid, topic, hate = row
 
-                if (lang == 'tr' and langid == '1') or (lang == 'en' and langid == 0):
+                if (lang == 'tr' and langid == '1') or (lang == 'en' and langid == '0'):
                     continue
 
-                if setup == 'politics' and topic != 3:
+                if setup == 'politics' and topic != '3':
                     continue
 
                 if type == 'binary':
@@ -128,11 +128,12 @@ class LargeScaleXDomain(datasets.GeneratorBasedBuilder):
                 elif type == 'fine-grained':
                     label = 'normal' if hate == '0' else 'offensive' if hate == '1' else 'hate'
 
-                data.append({
-                    'id': id,
-                    'text': tweets[id],
-                    'label': label,
-                })
+                if id in tweets:
+                    data.append({
+                        'id': id,
+                        'text': tweets[id],
+                        'label': label,
+                    })
 
         train, test = train_test_split(
             data,
