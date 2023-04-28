@@ -120,7 +120,9 @@ PVP_DICT['ami18'] = {
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
             ManualTemplateFactory('{"placeholder":"text_a"} Was it sexist or neutral? It was {"mask"}'),
             MixedTemplateFactory('{"soft": "AMI18"} {"soft": "it-misogyny"} {"placeholder":"text_a"} It was {"mask"}'),
-        ],
+            ManualTemplateFactory(
+                'Questo è un discorso di odio? {"placeholder":"text_a"} {"mask"}'),
+            ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
                 "misogyny": ["Sì"],
@@ -147,6 +149,10 @@ PVP_DICT['ami18'] = {
                 'non-misogyny': ["neutral", "innocent", "nice", "good"],
                 'misogyny': ["sexist", "offensive", "extreme", "bad"],
             }),
+            ManualVerbalizerFactory({
+                "non-misogyny": ["No"],
+                "misogyny": ["Sì"],
+            }),
         ],
         pvps={
             0: (0, 0),
@@ -158,6 +164,7 @@ PVP_DICT['ami18'] = {
             6: (4, 4),
             7: (5, 4),
             8: (5, 5),
+            9: (6, 6),
         },
     ),
     'it-misogyny_category': DatasetPVPs(
@@ -213,6 +220,7 @@ PVP_DICT['ami18'] = {
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was targeted at {"mask"}'),
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+            ManualTemplateFactory('{"placeholder":"text_a"} Era preso di mira {"mask"}'),
         ],
         prompt_verbalizers=[
             ManualVerbalizerFactory({
@@ -223,10 +231,15 @@ PVP_DICT['ami18'] = {
                 'active': ["active"],
                 'passive': ["passive"]
             }),
+            ManualVerbalizerFactory({
+                "active": ["individuale"],
+                "passive": ["gruppo"],
+            }),
         ],
         pvps={
             0: (0, 0),
             1: (1, 1),
+            2: (2, 2),
         },
     ),
 }

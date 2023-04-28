@@ -82,6 +82,46 @@ require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/text
 logger = logging.getLogger(__name__)
 
 
+# Get the metric function
+METRICS = [
+    load_metric("accuracy"),
+    #  load_metric("f1"),
+    #  load_metric("precision"),
+    #  load_metric("recall"),
+    load_metric(
+        importlib.import_module(
+            "src.metrics.f1_report.f1_report"
+        ).__file__
+    ),
+]
+
+
+def compute_metrics(preds, references, label_list, is_regression, metrics):
+    preds = np.squeeze(preds) if is_regression else np.argmax(preds, axis=1)
+
+    if is_regression:
+        return {"mse": ((preds - references) ** 2).mean().item()}
+    else:
+        res = dict()
+        for m in metrics:
+            if m.info.metric_name == 'f1_report':
+                scores = m.compute(
+                    predictions=preds,
+                    references=references,
+                    label_names=label_list,
+                )
+            else:
+                scores = m.compute(
+                    predictions=preds,
+                    references=references,
+                )
+
+            for k, v in scores.items():
+                res[k] = v
+
+        return res
+
+
 def setup_multi_parameter(parameter, num, null_value):
     if parameter is None:
         parameter = [None] * num
@@ -1090,48 +1130,13 @@ def main():
         dataset_metadata
     )
 
-    # Get the metric function
-    metric = [
-        load_metric("accuracy"),
-        #  load_metric("f1"),
-        #  load_metric("precision"),
-        #  load_metric("recall"),
-        load_metric(
-            importlib.import_module(
-                "src.metrics.f1_report.f1_report"
-            ).__file__
-        ),
-    ]
-
     # You can define your custom compute_metrics function. It takes an
     # `EvalPrediction` object (a namedtuple with a predictions and label_ids
     # field) and has to return a dictionary string to float.
-    def compute_metrics(p: EvalPrediction, dataset_name: str):
+    def compute_metrics_local(p: EvalPrediction, dataset_name: str):
         _, label_list, is_regression, _ = dataset_metadata[dataset_name]
         preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
-        preds = np.squeeze(preds) if is_regression else np.argmax(preds, axis=1)
-
-        if is_regression:
-            return {"mse": ((preds - p.label_ids) ** 2).mean().item()}
-        else:
-            res = dict()
-            for m in metric:
-                if m.info.metric_name == 'f1_report':
-                    scores = m.compute(
-                        predictions=preds,
-                        references=p.label_ids,
-                        label_names=label_list,
-                    )
-                else:
-                    scores = m.compute(
-                        predictions=preds,
-                        references=p.label_ids,
-                    )
-
-                for k, v in scores.items():
-                    res[k] = v
-
-            return res
+        return compute_metrics(preds, p.label_ids, label_list, is_regression, METRICS)
 
     # Data collator will default to DataCollatorWithPadding when the tokenizer
     # is passed to Trainer, so we change it if we already did the padding.
@@ -1182,7 +1187,7 @@ def main():
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
-        compute_metrics=compute_metrics,
+        compute_metrics=compute_metrics_local,
         tokenizer=tokenizer,
         data_collator=data_collator,
         callbacks=callbacks,
@@ -1267,19 +1272,24 @@ def main():
             trainer.log_metrics(task_name, metrics)
             trainer.save_metrics(task_name, metrics)
 
+            prediction_logits = predictions
             predictions = np.squeeze(predictions) if is_regression else np.argmax(predictions, axis=1)
 
             output_predict_file = os.path.join(training_args.output_dir, f"{task_name}_predictions.txt")
             if trainer.is_world_process_zero():
                 with open(output_predict_file, "w") as writer:
                     logger.info(f"***** Predict results {task_name} *****")
-                    writer.write("index\tprediction\n")
-                    for index, item in enumerate(predictions):
+                    if is_regression:
+                        writer.write("index\tprediction\n")
+                    else:
+                        writer.write("index\tprediction\tlogits\n")
+                    for index, (item, logits) in enumerate(zip(predictions, prediction_logits)):
                         if is_regression:
                             writer.write(f"{index}\t{item:3.3f}\n")
                         else:
                             item = label_list[item]
-                            writer.write(f"{index}\t{item}\n")
+                            logit_str = ",".join([f"{logit:3.6f}" for logit in logits])
+                            writer.write(f"{index}\t{item}\t{logit_str}\n")
 
     if training_args.do_visualize:
         from src.visualization import get_averaged_fusion_attentions, visualize_and_save

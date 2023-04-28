@@ -21,7 +21,7 @@ class LargeScaleXDomain(datasets.GeneratorBasedBuilder):
         datasets.BuilderConfig(name=f'{lang}-{type}-{setup}', version=datasets.Version("1.0.0"))
         for type in ['binary', 'fine_grained']
         for lang in ['en', 'tr']
-        for setup in ['full', 'politics']
+        for setup in ['full', 'politics', 'religion']
     ]
 
     def _info(self):
@@ -121,6 +121,9 @@ class LargeScaleXDomain(datasets.GeneratorBasedBuilder):
                     continue
 
                 if setup == 'politics' and topic != '3':
+                    continue
+
+                if setup == 'religion' and topic != '0':
                     continue
 
                 if type == 'binary':
