@@ -22,10 +22,10 @@ def print_haspeede3_format(preds, df, output_file):
     labels = df.features['label'].names
     labels = {i: i for i, _ in enumerate(labels)}
     with open(output_file, "w") as f:
-        print('anonymized_tweet_id\tlabel', file=f)
+        print('anonymized_tweet_id,label', file=f)
         print(
             '\n'.join([
-                f'{df[i]["id"]}\t{labels[p]}' for i, p in enumerate(preds)
+                f'{df[i]["id"]},{labels[p]}' for i, p in enumerate(preds)
             ]),
             file=f
         )

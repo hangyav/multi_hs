@@ -15,7 +15,7 @@ _DESCRIPTION = """
 """
 
 
-class HaSpeeDe3Dev(datasets.GeneratorBasedBuilder):
+class HaSpeeDe3SharedTask(datasets.GeneratorBasedBuilder):
     VERSION = datasets.Version("1.0.0")
 
     BUILDER_CONFIGS = [
@@ -50,33 +50,40 @@ class HaSpeeDe3Dev(datasets.GeneratorBasedBuilder):
         assert url, 'Set HASPEEDE3_URL environment variable to point to downloaded tweets.'
         data_type = self.config.name.split('_')[1]
         if data_type == 'text':
-            file = 'training_textual.csv'
+            file = 'textual.csv'
         else:
-            file = 'training_contextual.csv'
+            file = 'contextual.csv'
 
-        return [
-            datasets.SplitGenerator(
-                name=datasets.Split.TRAIN,
-                gen_kwargs={
-                    'filepath': f'{url}/development/{file}',
-                    'split': 'train'
-                }
-            ),
-            datasets.SplitGenerator(
-                name=datasets.Split.VALIDATION,
-                gen_kwargs={
-                    'filepath': f'{url}/development/{file}',
-                    'split': 'validation'
-                }
-            ),
+        data_domain = self.config.name.split('_')[0]
+        res = [
             datasets.SplitGenerator(
                 name=datasets.Split.TEST,
                 gen_kwargs={
-                    'filepath': f'{url}/development/{file}',
+                    'filepath': f'{url}/test/test_{file}',
                     'split': 'test'
                 }
             )
         ]
+
+        if data_domain == 'politics':
+            res = [
+                datasets.SplitGenerator(
+                    name=datasets.Split.TRAIN,
+                    gen_kwargs={
+                        'filepath': f'{url}/development/training_{file}',
+                        'split': 'train'
+                    }
+                ),
+                datasets.SplitGenerator(
+                    name=datasets.Split.VALIDATION,
+                    gen_kwargs={
+                        'filepath': f'{url}/development/training_{file}',
+                        'split': 'validation'
+                    }
+                ),
+            ] + res
+
+        return res
 
     def _generate_examples(self, filepath, split):
         data_type = self.config.name.split('_')[1]
@@ -95,7 +102,12 @@ class HaSpeeDe3Dev(datasets.GeneratorBasedBuilder):
             next(csv_reader)
 
             for row in csv_reader:
-                id, text, label, dataset = row
+                if split != 'test':
+                    id, text, label, dataset = row
+                else:
+                    id, text, dataset = row
+                    label = '0'  # dummy label
+
                 if dataset_type not in dataset:
                     continue
 
@@ -110,18 +122,7 @@ class HaSpeeDe3Dev(datasets.GeneratorBasedBuilder):
                     'label': label,
                 })
 
-        train, test = train_test_split(
-            data,
-            test_size=0.2,
-            random_state=0,
-            stratify=[item['label'] for item in data]
-        )
-
-        if split == 'test':
-            data = test
-        else:
-            data = train
-
+        if split != 'test':
             train, valid = train_test_split(
                 data,
                 test_size=0.2,
@@ -135,4 +136,3 @@ class HaSpeeDe3Dev(datasets.GeneratorBasedBuilder):
 
         for idx, item in enumerate(data):
             yield idx, item
-

@@ -51,6 +51,7 @@ from transformers import (
     RobertaForMaskedLM,
     XLMRobertaForMaskedLM,
     DataCollatorForLanguageModeling,
+    CamembertForMaskedLM,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
@@ -799,7 +800,8 @@ def get_openprompts_model_name(model):
         return {
             BertForMaskedLM: 'bert',
             RobertaForMaskedLM: 'roberta',
-            XLMRobertaForMaskedLM: 'roberta'
+            XLMRobertaForMaskedLM: 'roberta',
+            CamembertForMaskedLM: 'roberta',
         }[type(model)]
     except Exception:
         raise ValueError(f'Model type not supported: {type(model)}')
@@ -914,7 +916,8 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
     # to your use case.
     sentence_keys_dict = dict()
     for dataset_name, dataset in raw_datasets:
-        non_label_column_names = [name for name in dataset["train"].column_names if name != "label"]
+        split = "train" if "train" in dataset else "validation" if "validation" in dataset else "test"
+        non_label_column_names = [name for name in dataset[split].column_names if name != "label"]
         if "sentence1" in non_label_column_names and "sentence2" in non_label_column_names:
             sentence1_key, sentence2_key = "sentence1", "sentence2"
         elif 'text' in non_label_column_names:
@@ -992,7 +995,7 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
         train_dataset = dict()
         for (dataset_name, dataset), max_train_samples in zip(raw_datasets, data_args.max_train_samples):
             if "train" not in dataset:
-                raise ValueError(f"--do_train requires a train dataset in {dataset_name}")
+                logger.warning(f"Skipping {dataset_name} as it doesn't have a train split")
             train_dataset_tmp = dataset["train"]
             train_dataset_tmp = reduce_dataset_if_needed(
                 train_dataset_tmp,
@@ -1012,6 +1015,8 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
                     logger.info(f'Training dataset resampled with {data_args.train_sampling}')
 
             train_dataset[dataset_name] = train_dataset_tmp
+        assert len(train_dataset) > 0
+
         if data_args.train_sampling is not None:
             if data_args.train_sampling == 'global_balanced_over':
                 assert model_args.model_type == 'prompt'
@@ -1037,7 +1042,7 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
         eval_dataset = dict()
         for (dataset_name, dataset), max_eval_samples in zip(raw_datasets, data_args.max_eval_samples):
             if "validation" not in dataset:
-                raise ValueError(f"--do_eval requires a validation dataset in {dataset_name}")
+                logger.warning(f"Skipping {dataset_name} as it doesn't have a validation split")
 
             eval_dataset_tmp = dataset["validation"]
             eval_dataset_tmp = reduce_dataset_if_needed(
@@ -1048,13 +1053,14 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
             )
 
             eval_dataset[dataset_name] = eval_dataset_tmp
+        assert len(eval_dataset) > 0
 
     predict_dataset = None
     if training_args.do_predict:
         predict_dataset = dict()
         for (dataset_name, dataset), max_predict_samples in zip(raw_datasets, data_args.max_predict_samples):
             if "test" not in dataset:
-                raise ValueError(f"--do_predict requires a test dataset in {dataset_name}")
+                logger.warning(f"Skipping {dataset_name} as it doesn't have a test split")
 
             predict_dataset_tmp = dataset["test"]
             predict_dataset_tmp = reduce_dataset_if_needed(
@@ -1065,6 +1071,7 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
             )
 
             predict_dataset[dataset_name] = predict_dataset_tmp
+        assert len(predict_dataset) > 0
 
     # Log a few random samples from the training set:
     if training_args.do_train:
