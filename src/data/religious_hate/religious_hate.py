@@ -22,13 +22,21 @@ _HOME_PAGE = "https://github.com/dhfbk/religious-hate-speech"
 class LargeScaleXDomain(datasets.GeneratorBasedBuilder):
     BUILDER_CONFIGS = [
         datasets.BuilderConfig(name=f'{lang}-{type}', version=datasets.Version("1.0.0"))
-        for type in ['abusive']
+        for type in ['abusive', 'religious_bin']
         for lang in ['en', 'it']
     ]
 
     def _info(self):
         lang, type = self.config.name.split('-')
         if type == "abusive":
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=['NOT-ABUSIVE', 'ABUSIVE']),
+                }
+            )
+        elif type == "religious_bin":
             features = datasets.Features(
                 {
                     'id': datasets.Value('string'),
@@ -115,6 +123,12 @@ class LargeScaleXDomain(datasets.GeneratorBasedBuilder):
                 label = label.replace(' ', '-')
                 if label == 'ABUS':
                     label = 'ABUSIVE'
+
+                if type == 'religious_bin' and label == 'ABUSIVE' and len(row) >= 4:
+                    religion_label = row[3]
+                    religion_label = religion_label.replace(' ', '-')
+                    if religion_label != 'RELIGIOUS-HATE':
+                        label = 'NOT-ABUSIVE'
 
                 if id in tweets:
                     data.append({
