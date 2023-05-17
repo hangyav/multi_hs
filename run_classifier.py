@@ -598,21 +598,22 @@ def get_datasets(model_args, data_args, training_args):
     # Labels
     # Trying to have good defaults here, don't hesitate to tweak to your needs.
     for dataset_name, dataset in raw_datasets:
-        is_regression = dataset["train"].features["label"].dtype in ["float32", "float64"]
+        split = "train" if "train" in dataset else "validation" if "validation" in dataset else "test"
+        is_regression = dataset[split].features["label"].dtype in ["float32", "float64"]
         if is_regression:
             num_labels = 1
             label_list = None
         else:
             # A useful fast method:
             # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.unique
-            label_list = dataset["train"].features["label"].names
+            label_list = dataset[split].features["label"].names
             num_labels = len(label_list)
 
         dataset_metadata[dataset_name] = (
             num_labels,
             label_list,
             is_regression,
-            get_pvp(dataset['train'])
+            get_pvp(dataset[split])
         )
 
     return raw_datasets, dataset_metadata
@@ -1043,6 +1044,7 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
         for (dataset_name, dataset), max_eval_samples in zip(raw_datasets, data_args.max_eval_samples):
             if "validation" not in dataset:
                 logger.warning(f"Skipping {dataset_name} as it doesn't have a validation split")
+                continue
 
             eval_dataset_tmp = dataset["validation"]
             eval_dataset_tmp = reduce_dataset_if_needed(
@@ -1061,6 +1063,7 @@ def preprocess_data(raw_datasets, model, tokenizer, config, data_args,
         for (dataset_name, dataset), max_predict_samples in zip(raw_datasets, data_args.max_predict_samples):
             if "test" not in dataset:
                 logger.warning(f"Skipping {dataset_name} as it doesn't have a test split")
+                continue
 
             predict_dataset_tmp = dataset["test"]
             predict_dataset_tmp = reduce_dataset_if_needed(
