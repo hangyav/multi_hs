@@ -1,7 +1,7 @@
 # based on: https://medium.com/@shahrukhx01/multi-task-learning-with-transformers-part-1-multi-prediction-heads-b7001cf014bf
 
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict
 import numpy as np
 
 from transformers import Trainer, PreTrainedModel
@@ -29,6 +29,7 @@ from torch.utils.data.sampler import RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 
 from src.data.multitask import MultitaskDataloader, DataLoaderWithTaskname
+from src.utils import truncate, PATH_NAME_MAX
 
 try:
     from openprompt import PromptDataLoader
@@ -38,6 +39,8 @@ except Exception:
 
 try:
     from transformers import AdapterTrainer
+    # from transformers.adapters.loading import WeightsLoader
+    from transformers.adapters.configuration import get_adapter_config_hash
 except Exception:
     AdapterTrainer = Trainer
 
@@ -402,6 +405,40 @@ class MultitaskTrainerMixin(object):
 
         return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
 
+    def _maybe_log_save_evaluate(self, tr_loss, model, trial, epoch, ignore_keys_for_eval):
+        # in the newer version of transformers this was changed and interferes
+        # with the multitask implementation so I just copied the old version
+        # here
+        if self.control.should_log:
+            if is_torch_tpu_available():
+                xm.mark_step()
+
+            logs: Dict[str, float] = {}
+
+            # all_gather + mean() to get average loss over all processes
+            tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
+
+            # reset tr_loss to zero
+            tr_loss -= tr_loss
+
+            logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            logs["learning_rate"] = self._get_learning_rate()
+
+            self._total_loss_scalar += tr_loss_scalar
+            self._globalstep_last_logged = self.state.global_step
+            self.store_flos()
+
+            self.log(logs)
+
+        metrics = None
+        if self.control.should_evaluate:
+            metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
+            self._report_to_hp_search(trial, self.state.global_step, metrics)
+
+        if self.control.should_save:
+            self._save_checkpoint(model, trial, metrics=metrics)
+            self.control = self.callback_handler.on_save(self.args, self.state, self.control)
+
 
 class CustomLossTrainerMixin(object):
     def __init__(self, loss_fct=None, *args, **kwargs):
@@ -493,7 +530,8 @@ class MultitaskAdapterTrainer(CustomLossTrainerMixin, MultitaskTrainerMixin, Ada
         else:
             self.model.save_all_adapters(output_dir)
             if self.train_adapter_fusion:
-                self.model.save_all_adapter_fusions(output_dir)
+                # self.model.save_all_adapter_fusions(output_dir)
+                self._save_all_adapter_fusions(self.model, output_dir)
             if hasattr(self.model, "heads"):
                 self.model.save_all_heads(output_dir)
             if not self.args.freeze_model_core:
@@ -503,6 +541,35 @@ class MultitaskAdapterTrainer(CustomLossTrainerMixin, MultitaskTrainerMixin, Ada
 
         # Good practice: save your training arguments together with the trained model
         torch.save(self.args, os.path.join(output_dir, "training_args.bin"))
+
+    @staticmethod
+    def _save_all_adapter_fusions(
+        model: str,
+        save_directory: str,
+        meta_dict: dict = None,
+        # custom_weights_loaders: Optional[List[WeightsLoader]] = None,
+        custom_weights_loaders=None,
+    ):
+        """
+        Saves all AdapterFusion layers of this model together with their configuration to subfolders of the given
+        location.
+
+        Args:
+            save_directory (str): Path to a directory where the AdapterFusion layers should be saved.
+        """
+        os.makedirs(save_directory, exist_ok=True)
+        for name in model.config.adapters.fusions:
+            adapter_fusion_config = model.config.adapters.get_fusion(name)
+            h = get_adapter_config_hash(adapter_fusion_config)
+            save_path = os.path.join(save_directory, truncate(name, PATH_NAME_MAX))
+            if meta_dict:
+                meta_dict.update({"config_id": h})
+            else:
+                meta_dict = {"config_id": h}
+            model.save_adapter_fusion(
+                save_path, name, meta_dict=meta_dict, custom_weights_loaders=custom_weights_loaders
+            )
+
 
 
 class MLMTrainerMixin(object):

@@ -13,6 +13,9 @@ from src.data.prompting import get_pvp_by_name_and_config
 logger = logging.getLogger(__name__)
 
 
+PATH_NAME_MAX = 255
+
+
 class TensorBoardLogitsCallback(TensorBoardCallback):
     def on_train_begin(self, args, state, control, **kwargs):
         if not state.is_world_process_zero:
@@ -88,3 +91,10 @@ def save_hf_datasets(dataset, dir, pid=None,
         df = dataset[split]
         with open(os.path.join(dir, name), 'w') as fout:
             save_hf_dataset(df, fout, pid)
+
+
+def truncate(string, length, suffix='...'):
+    if len(string) > length:
+        string = string[:length - len(suffix)] + suffix
+
+    return string

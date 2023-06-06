@@ -65,6 +65,7 @@ from src.modeling import (
     HeadSelectionWrapper,
     AdapterSelectionWrapper,
     PromptSelectionWrapper,
+    PromptAdapterSelectionWrapper,
 )
 from src.training import (
     MultitaskAdapterTrainer,
@@ -73,6 +74,7 @@ from src.training import (
     MLMMultitaskAdapterTrainer,
 )
 from src import losses
+from src.utils import truncate, PATH_NAME_MAX
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -651,6 +653,54 @@ def setup_model(model, tokenizer, dataset_metadata, model_args, data_args,
     return model, tokenizer, wrapper
 
 
+def _build_adapter_dict(data_args):
+    adapter_dict = {
+        f'{dataset_name}-{dataset_config_name}': [task_name]
+        for task_name, dataset_name, dataset_config_name in zip(
+            data_args.task_name,
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+        )
+    }
+    return adapter_dict
+
+
+def _build_active_adapter_dict(data_args, lang_adapter_names):
+    import transformers.adapters.composition as ac
+    active_adapter_dict = {
+        f'{dataset_name}-{dataset_config_name}': ac.Stack(lang_adapter, task_name)
+        for task_name, dataset_name, dataset_config_name, lang_adapter in zip(
+            data_args.task_name,
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+            lang_adapter_names,
+        )
+    }
+    return active_adapter_dict
+
+
+def _build_prompt_model_dict(model, tokenizer, dataset_metadata, data_args, training_args):
+    from openprompt import PromptForClassification
+    prompt_model_dict = {
+        f'{dataset_name}-{dataset_config}': dataset_metadata[f'{dataset_name}-{dataset_config}'][3].get_pvp(pattern_id, tokenizer, model)
+        for dataset_name, dataset_config, pattern_id in zip(
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+            data_args.prompt_ids
+        )
+    }
+    prompt_model_dict = {
+        # FIXME manual moving to cuda is not nice at all
+        k: PromptForClassification(
+            template=v.template,
+            verbalizer=v.verbalizer,
+            plm=model,
+            ).to('cpu' if training_args.no_cuda else 'cuda:0')
+        for k, v in prompt_model_dict.items()
+    }
+    return prompt_model_dict
+
+
 def wrap_model(model, tokenizer, model_args, data_args, training_args, adapter_args,
                lang_adapter_names, adapter_setup, dataset_metadata):
     if model_args.model_type == 'classifier':
@@ -665,31 +715,16 @@ def wrap_model(model, tokenizer, model_args, data_args, training_args, adapter_a
             }
             HeadSelectionWrapper(model, head_dict)
         else:
-            import transformers.adapters.composition as ac
+            # import transformers.adapters.composition as ac
             if adapter_args.fuse_adapters is not None:
                 # there's only one task in this case.
                 model.train_adapter_fusion(adapter_setup)
                 MultiTaskModelWrapper(model)
             else:
-                adapter_dict = {
-                    f'{dataset_name}-{dataset_config_name}': [task_name]
-                    for task_name, dataset_name, dataset_config_name in zip(
-                        data_args.task_name,
-                        data_args.dataset_name,
-                        data_args.dataset_config_name,
-                    )
-                }
+                adapter_dict = _build_adapter_dict(data_args)
                 active_adapter_dict = None
                 if lang_adapter_names is not None:
-                    active_adapter_dict = {
-                        f'{dataset_name}-{dataset_config_name}': ac.Stack(lang_adapter, task_name)
-                        for task_name, dataset_name, dataset_config_name, lang_adapter in zip(
-                            data_args.task_name,
-                            data_args.dataset_name,
-                            data_args.dataset_config_name,
-                            lang_adapter_names,
-                        )
-                    }
+                    active_adapter_dict = _build_active_adapter_dict(data_args, lang_adapter_names)
 
                 # We need to activate any adapter now
                 # Freeze all model weights except of those of this adapter
@@ -701,25 +736,49 @@ def wrap_model(model, tokenizer, model_args, data_args, training_args, adapter_a
                 AdapterSelectionWrapper(model, adapter_dict, active_adapter_dict,
                                         training_args.freeze_model_core)
     elif model_args.model_type == 'prompt':
-        from openprompt import PromptForClassification
-        prompt_model_dict = {
-            f'{dataset_name}-{dataset_config}': dataset_metadata[f'{dataset_name}-{dataset_config}'][3].get_pvp(pattern_id, tokenizer, model)
-            for dataset_name, dataset_config, pattern_id in zip(
-                data_args.dataset_name,
-                data_args.dataset_config_name,
-                data_args.prompt_ids
+        if adapter_args.fuse_adapters is not None:
+            # there's only one task in this case.
+            model.train_adapter_fusion(adapter_setup)
+            prompt_model_dict = _build_prompt_model_dict(
+                model, tokenizer,
+                dataset_metadata,
+                data_args,
+                training_args,
             )
-        }
-        prompt_model_dict = {
-            # FIXME manual moving to cuda is not nice at all
-            k: PromptForClassification(
-                template=v.template,
-                verbalizer=v.verbalizer,
-                plm=model,
-                ).to('cpu' if training_args.no_cuda else 'cuda:0')
-            for k, v in prompt_model_dict.items()
-        }
-        PromptSelectionWrapper(model, prompt_model_dict)
+            PromptSelectionWrapper(model, prompt_model_dict)
+        elif adapter_args.train_adapter:
+            adapter_dict = _build_adapter_dict(data_args)
+            active_adapter_dict = None
+            if lang_adapter_names is not None:
+                active_adapter_dict = _build_active_adapter_dict(data_args, lang_adapter_names)
+
+            # We need to activate any adapter now
+            # Freeze all model weights except of those of this adapter
+            model.train_adapter(next(adapter_dict.values().__iter__()))
+            # Set the adapters to be used in every forward pass
+            tmp_dict = active_adapter_dict if active_adapter_dict else adapter_dict
+            model.set_active_adapters(next(tmp_dict.values().__iter__()))
+            prompt_model_dict = _build_prompt_model_dict(
+                model, tokenizer,
+                dataset_metadata,
+                data_args,
+                training_args,
+            )
+            PromptAdapterSelectionWrapper(
+                model,
+                prompt_model_dict,
+                adapter_dict,
+                active_adapter_dict,
+                training_args.freeze_model_core,
+            )
+        else:
+            prompt_model_dict = _build_prompt_model_dict(
+                model, tokenizer,
+                dataset_metadata,
+                data_args,
+                training_args,
+            )
+            PromptSelectionWrapper(model, prompt_model_dict)
 
 
 def setup_adapters_if_needed(model, model_args, data_args, training_args,
@@ -775,8 +834,15 @@ def setup_adapters_if_needed(model, model_args, data_args, training_args,
 
         if adapter_args.fuse_adapters is not None:
             adapter_setup = [adapter_args.fuse_adapters]
-            fusion_dir = os.path.join(training_args.output_dir, ','.join(adapter_setup[0]))
-            fusion_config_path = os.path.join(fusion_dir, 'adapter_fusion_config.json')
+            fusion_dir = os.path.join(
+                training_args.output_dir,
+                truncate(
+                    ','.join(adapter_setup[0]),
+                    PATH_NAME_MAX,
+                )
+            )
+            fusion_config_path = os.path.join(
+                fusion_dir, 'adapter_fusion_config.json')
             if os.path.exists(fusion_config_path):
                 model.load_adapter_fusion(fusion_dir)
             else:
