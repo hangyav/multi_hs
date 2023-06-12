@@ -43,7 +43,7 @@ class HaSpeeDe1(datasets.GeneratorBasedBuilder):
             name="FB", version=VERSION
         ),
         datasets.BuilderConfig(
-            name="TW", version=VERSION  # ablation study
+            name="TW", version=VERSION
         ),
     ]
 

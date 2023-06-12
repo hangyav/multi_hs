@@ -64,6 +64,18 @@ class MLMA(datasets.GeneratorBasedBuilder):
             name="en-sentiment_rep_ab2", version=VERSION  # ablation study
         ),
         datasets.BuilderConfig(
+            name="en-sentiment_rep_abhateoffensive", version=VERSION  # ablation study
+        ),
+        datasets.BuilderConfig(
+            name="en-sentiment_rep_ababusivenormal", version=VERSION  # ablation study
+        ),
+        datasets.BuilderConfig(
+            name="en-sentiment_rep_aboffensivenormal", version=VERSION  # ablation study
+        ),
+        datasets.BuilderConfig(
+            name="en-sentiment_rep_abhatenormal", version=VERSION  # ablation study
+        ),
+        datasets.BuilderConfig(
             name="en-directness", version=VERSION
         ),
         # datasets.BuilderConfig(
@@ -111,6 +123,66 @@ class MLMA(datasets.GeneratorBasedBuilder):
                         'abusive',
                         'hateful',
                         'offensive',
+                        # 'disrespectful',
+                        # 'fearful',
+                        'normal'
+                    ]),
+                }
+            )
+        elif type == "sentiment_rep_abhateoffensive":
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        # 'abusive',
+                        'hateful',
+                        'offensive',
+                        # 'disrespectful',
+                        # 'fearful',
+                        # 'normal'
+                    ]),
+                }
+            )
+        elif type == "sentiment_rep_ababusivenormal":
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        'abusive',
+                        # 'hateful',
+                        # 'offensive',
+                        # 'disrespectful',
+                        # 'fearful',
+                        'normal'
+                    ]),
+                }
+            )
+        elif type == "sentiment_rep_aboffensivenormal":
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        # 'abusive',
+                        # 'hateful',
+                        'offensive',
+                        # 'disrespectful',
+                        # 'fearful',
+                        'normal'
+                    ]),
+                }
+            )
+        elif type == "sentiment_rep_abhatenormal":
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        # 'abusive',
+                        'hateful',
+                        # 'offensive',
                         # 'disrespectful',
                         # 'fearful',
                         'normal'
@@ -240,6 +312,54 @@ class MLMA(datasets.GeneratorBasedBuilder):
                 elif type == 'sentiment_rep_ab2':
                     for idx, label in enumerate(sentiment.split('_')):
                         if label in {'disrespectful', 'fearful'}:
+                            continue
+                        item = {
+                            'id': f'{id}.{idx}',
+                            'text': text,
+                            'label': label,
+                        }
+                        data.append(item)
+
+                    continue
+                elif type == 'sentiment_rep_abhateoffensive':
+                    for idx, label in enumerate(sentiment.split('_')):
+                        if label in {'disrespectful', 'fearful', 'abusive', 'normal'}:
+                            continue
+                        item = {
+                            'id': f'{id}.{idx}',
+                            'text': text,
+                            'label': label,
+                        }
+                        data.append(item)
+
+                    continue
+                elif type == 'sentiment_rep_ababusivenormal':
+                    for idx, label in enumerate(sentiment.split('_')):
+                        if label not in {'abusive', 'normal'}:
+                            continue
+                        item = {
+                            'id': f'{id}.{idx}',
+                            'text': text,
+                            'label': label,
+                        }
+                        data.append(item)
+
+                    continue
+                elif type == 'sentiment_rep_aboffensivenormal':
+                    for idx, label in enumerate(sentiment.split('_')):
+                        if label not in {'offensive', 'normal'}:
+                            continue
+                        item = {
+                            'id': f'{id}.{idx}',
+                            'text': text,
+                            'label': label,
+                        }
+                        data.append(item)
+
+                    continue
+                elif type == 'sentiment_rep_abhatenormal':
+                    for idx, label in enumerate(sentiment.split('_')):
+                        if label not in {'hateful', 'normal'}:
                             continue
                         item = {
                             'id': f'{id}.{idx}',

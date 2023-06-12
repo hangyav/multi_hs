@@ -63,6 +63,78 @@ PVP_DICT['mlma'] = {
             0: (0, 0),
         },
     ),
+    'en-sentiment_rep_abhateoffensive': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                # 'abusive': ['abusive'],
+                'hateful': ['hate'],
+                'offensive': ['offensive'],
+                # 'disrespectful': ['disrespectful'],
+                # 'fearful': ['fearful'],
+                # 'normal': ['neutral'],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
+    'en-sentiment_rep_ababusivenormal': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                'abusive': ['abusive'],
+                # 'hateful': ['hate'],
+                # 'offensive': ['offensive'],
+                # 'disrespectful': ['disrespectful'],
+                # 'fearful': ['fearful'],
+                'normal': ['neutral'],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
+    'en-sentiment_rep_aboffensivenormal': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                # 'abusive': ['abusive'],
+                # 'hateful': ['hate'],
+                'offensive': ['offensive'],
+                # 'disrespectful': ['disrespectful'],
+                # 'fearful': ['fearful'],
+                'normal': ['neutral'],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
+    'en-sentiment_rep_abhatenormal': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                # 'abusive': ['abusive'],
+                'hateful': ['hate'],
+                # 'offensive': ['offensive'],
+                # 'disrespectful': ['disrespectful'],
+                # 'fearful': ['fearful'],
+                'normal': ['neutral'],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
     'en-directness': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),

@@ -71,6 +71,51 @@ PVP_DICT['hasoc19'] = {
             0: (0, 0),
         },
     ),
+    'en-fine_grained_abprofanity': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                # 'HATE': ["hate"],
+                # 'OFFN': ["offensive"],
+                'PRFN': ["profane"],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
+    'en-fine_grained_abhate': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                'HATE': ["hate"],
+                # 'OFFN': ["offensive"],
+                # 'PRFN': ["profane"],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
+    'en-fine_grained_aboffensive': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                # 'HATE': ["hate"],
+                'OFFN': ["offensive"],
+                # 'PRFN': ["profane"],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+        },
+    ),
     'en-targeted': DatasetPVPs(
         prompt_templates=[
             ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
@@ -82,6 +127,25 @@ PVP_DICT['hasoc19'] = {
             }),
             ManualVerbalizerFactory({
                 'UNT': ['general', 'normal', 'neutral'],
+                'TIN': ['targeted', 'individual', 'group'],
+            }),
+        ],
+        pvps={
+            0: (0, 0),
+            1: (0, 1),
+        },
+    ),
+    'en-targeted_abtarget': DatasetPVPs(
+        prompt_templates=[
+            ManualTemplateFactory('{"placeholder":"text_a"} It was {"mask"}'),
+        ],
+        prompt_verbalizers=[
+            ManualVerbalizerFactory({
+                # 'UNT': ['general'],
+                'TIN': ['targeted'],
+            }),
+            ManualVerbalizerFactory({
+                # 'UNT': ['general', 'normal', 'neutral'],
                 'TIN': ['targeted', 'individual', 'group'],
             }),
         ],

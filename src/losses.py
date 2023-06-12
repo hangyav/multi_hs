@@ -55,6 +55,9 @@ class BinaryVSLoss(nn.Module):
 
 
 class VSLoss(nn.Module):
+    """
+    Focal loss
+    """
 
     def __init__(self, cls_num_list, gamma=0.3, tau=1.0, weight=None):
         super(VSLoss, self).__init__()

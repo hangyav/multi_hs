@@ -46,6 +46,18 @@ class LargeScaleAbuse(datasets.GeneratorBasedBuilder):
         datasets.BuilderConfig(
             name="fine_grained_ab2", version=VERSION  # ablation study
         ),
+        datasets.BuilderConfig(
+            name="fine_grained_abhate", version=VERSION  # ablation study
+        ),
+        datasets.BuilderConfig(
+            name="fine_grained_abnormal", version=VERSION  # ablation study
+        ),
+        datasets.BuilderConfig(
+            name="fine_grained_ababusivenormal", version=VERSION  # ablation study
+        ),
+        datasets.BuilderConfig(
+            name="fine_grained_abhatenormal", version=VERSION  # ablation study
+        ),
     ]
 
     def _info(self):
@@ -78,6 +90,58 @@ class LargeScaleAbuse(datasets.GeneratorBasedBuilder):
                     "text": datasets.Value("string"),
                     "label": datasets.features.ClassLabel(names=[
                         'abusive',
+                        'hateful',
+                        # 'spam',
+                        'normal'
+                    ]),
+                }
+            )
+        elif type == 'fine_grained_abhate':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        # 'abusive',
+                        'hateful',
+                        # 'spam',
+                        # 'normal'
+                    ]),
+                }
+            )
+        elif type == 'fine_grained_abnormal':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        # 'abusive',
+                        # 'hateful',
+                        # 'spam',
+                        'normal'
+                    ]),
+                }
+            )
+        elif type == 'fine_grained_ababusivenormal':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        'abusive',
+                        # 'hateful',
+                        # 'spam',
+                        'normal'
+                    ]),
+                }
+            )
+        elif type == 'fine_grained_abhatenormal':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    "text": datasets.Value("string"),
+                    "label": datasets.features.ClassLabel(names=[
+                        # 'abusive',
                         'hateful',
                         # 'spam',
                         'normal'
@@ -148,6 +212,18 @@ class LargeScaleAbuse(datasets.GeneratorBasedBuilder):
                         continue
                 elif type == 'fine_grained_ab2':
                     if label in {'spam'}:
+                        continue
+                elif type == 'fine_grained_abhate':
+                    if label in {'spam', 'abusive', 'normal'}:
+                        continue
+                elif type == 'fine_grained_abnormal':
+                    if label not in {'normal'}:
+                        continue
+                elif type == 'fine_grained_ababusivenormal':
+                    if label in {'spam', 'hateful'}:
+                        continue
+                elif type == 'fine_grained_abhatenormal':
+                    if label not in {'normal', 'hateful'}:
                         continue
 
                 item = {

@@ -41,6 +41,10 @@ class HASOC19(datasets.GeneratorBasedBuilder):
         if f'{lang}-{type}' not in ['de-targeted']
     ] + [
         datasets.BuilderConfig(name='en-fine_grained_ab1', version=datasets.Version("1.0.0")),  # setup for ablation study
+        datasets.BuilderConfig(name='en-fine_grained_abprofanity', version=datasets.Version("1.0.0")),  # setup for ablation study
+        datasets.BuilderConfig(name='en-fine_grained_abhate', version=datasets.Version("1.0.0")),  # setup for ablation study
+        datasets.BuilderConfig(name='en-fine_grained_aboffensive', version=datasets.Version("1.0.0")),  # setup for ablation study
+        datasets.BuilderConfig(name='en-targeted_abtarget', version=datasets.Version("1.0.0")),  # setup for ablation study
     ]
 
     def _info(self):
@@ -86,6 +90,48 @@ class HASOC19(datasets.GeneratorBasedBuilder):
                     ),
                 }
             )
+        elif type == 'fine_grained_abprofanity':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
+                        names=[
+                            # 'HATE',
+                            # 'OFFN',
+                            'PRFN',
+                        ]
+                    ),
+                }
+            )
+        elif type == 'fine_grained_abhate':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
+                        names=[
+                            'HATE',
+                            # 'OFFN',
+                            # 'PRFN',
+                        ]
+                    ),
+                }
+            )
+        elif type == 'fine_grained_aboffensive':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
+                        names=[
+                            # 'HATE',
+                            'OFFN',
+                            # 'PRFN',
+                        ]
+                    ),
+                }
+            )
         elif type == 'targeted':
             features = datasets.Features(
                 {
@@ -94,6 +140,19 @@ class HASOC19(datasets.GeneratorBasedBuilder):
                     'label': datasets.features.ClassLabel(
                         names=[
                             'UNT',
+                            'TIN',
+                        ]
+                    ),
+                }
+            )
+        elif type == 'targeted_abtarget':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('string'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
+                        names=[
+                            # 'UNT',
                             'TIN',
                         ]
                     ),
@@ -179,6 +238,22 @@ class HASOC19(datasets.GeneratorBasedBuilder):
                 elif type == 'fine_grained_ab1':
                     label = label_fine_grained
                     if label == 'PRFN':
+                        continue
+                elif type == 'fine_grained_abprofanity':
+                    label = label_fine_grained
+                    if label != 'PRFN':
+                        continue
+                elif type == 'fine_grained_abhate':
+                    label = label_fine_grained
+                    if label != 'HATE':
+                        continue
+                elif type == 'fine_grained_aboffensive':
+                    label = label_fine_grained
+                    if label != 'OFFN':
+                        continue
+                elif type == 'targeted_abtarget':
+                    label = targeted
+                    if label != 'TIN':
                         continue
                 else:
                     label = targeted

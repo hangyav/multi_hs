@@ -24,6 +24,8 @@ class SRW16(datasets.GeneratorBasedBuilder):
         datasets.BuilderConfig(name="binary", version=VERSION),
         datasets.BuilderConfig(name="fine_grained", version=VERSION),
         datasets.BuilderConfig(name="fine_grained_ab1", version=VERSION),  # ablation study
+        datasets.BuilderConfig(name="fine_grained_abnormal", version=VERSION),  # ablation study
+        datasets.BuilderConfig(name="fine_grained_absexnormal", version=VERSION),  # ablation study
         datasets.BuilderConfig(name="sexism", version=VERSION),
         datasets.BuilderConfig(name="racism", version=VERSION),
     ]
@@ -57,6 +59,34 @@ class SRW16(datasets.GeneratorBasedBuilder):
                 }
             )
         elif self.config.name == 'fine_grained_ab1':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('int64'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
+                        names=[
+                            'sexism',
+                            # 'racism',
+                            'none',
+                        ]
+                    ),
+                }
+            )
+        elif self.config.name == 'fine_grained_abnormal':
+            features = datasets.Features(
+                {
+                    'id': datasets.Value('int64'),
+                    'text': datasets.Value('string'),
+                    'label': datasets.features.ClassLabel(
+                        names=[
+                            # 'sexism',
+                            # 'racism',
+                            'none',
+                        ]
+                    ),
+                }
+            )
+        elif self.config.name == 'fine_grained_absexnormal':
             features = datasets.Features(
                 {
                     'id': datasets.Value('int64'),
@@ -176,6 +206,12 @@ class SRW16(datasets.GeneratorBasedBuilder):
                 elif self.config.name == 'racism':
                     label = 'racism' if label == 'racism' else 'non-racism'
                 elif self.config.name == 'fine_grained_ab1':
+                    if label == 'racism':
+                        continue
+                elif self.config.name == 'fine_grained_abnormal':
+                    if label != 'none':
+                        continue
+                elif self.config.name == 'fine_grained_absexnormal':
                     if label == 'racism':
                         continue
 

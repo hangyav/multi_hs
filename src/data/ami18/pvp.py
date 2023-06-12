@@ -34,6 +34,10 @@ PVP_DICT['ami18'] = {
                 'non-misogyny': ["neutral"],
                 'misogyny': ["sexist", "stereotypical", "dominance", "derailing", "harasment", "discrediting"]
             }),
+            ManualVerbalizerFactory({
+                'non-misogyny': ["neutral"],
+                'misogyny': ["misogyny"]
+            }),
         ],
         pvps={
             0: (0, 0),
@@ -43,6 +47,7 @@ PVP_DICT['ami18'] = {
             4: (3, 1),
             5: (2, 2),
             6: (1, 3),
+            7: (1, 4),
         },
     ),
     'en-misogyny_category': DatasetPVPs(
