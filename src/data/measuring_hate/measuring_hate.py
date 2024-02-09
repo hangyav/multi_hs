@@ -90,7 +90,7 @@ class LargeScaleXDomain(datasets.GeneratorBasedBuilder):
             label = 'counter'
             if -1.0 <= item['hate_speech_score'] <= 0.5:
                 label = 'normal'
-            else:
+            elif item['hate_speech_score'] > 0.5:
                 label = 'hate'
 
             if type == 'binary' and label == 'counter':
