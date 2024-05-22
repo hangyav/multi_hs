@@ -17,7 +17,7 @@ _DESCRIPTION = """
 _DATA_URL = 'https://raw.githubusercontent.com/JAugusto97/ToLD-Br/main/ToLD-BR.csv'
 
 
-class ToLD_Br(datasets.GeneratorBasedBuilder):
+class Told_Br(datasets.GeneratorBasedBuilder):
     VERSION = datasets.Version("1.0.0")
 
     BUILDER_CONFIGS = [
