@@ -1,0 +1,17 @@
+datasets==1.18.4
+emot==3.1
+beautifulsoup4==4.11.1
+imbalanced-learn==0.9.0
+inflect==6.0.4
+openprompt==1.0.1
+pyspellchecker==0.7.2
+sacremoses==0.0.49
+scikit-learn==1.0.2
+scipy==1.8.0
+termcolor==1.1.0
+torch==1.11.0
+torchaudio==0.11.0
+torchvision==0.12.0
+tqdm==4.64.0
+transformers==4.20.1
+wandb==0.14.2

@@ -15,7 +15,41 @@ Optionally, to test the environment, you can run the following command:
 
 ## Data
 
+The following datasets are supported:
+- `ami18`: [web](https://amievalita2018.wordpress.com/data), [config](src/data/ami18/ami18.py)
+- `bajer`: [web](https://github.com/phze22/Online-Misogyny-in-Danish-Bajer), [config](src/data/bajer/bajer.py)
+- `germeval18`: [web](https://github.com/uds-lsv/GermEval-2018-Data), [config](src/data/germeval18/germeval18.py)
+- `hasoc19`: [web](https://hasocfire.github.io/hasoc/2019/call_for_participation.html), [config](src/data/hasoc19/hasoc19.py)
+- `haspeede1`: [web](https://github.com/msang/haspeede/tree/master/2018), [config](src/data/haspeede1/haspeede1.py)
+- `haspeede2`: [web](https://github.com/msang/haspeede/tree/master/2020), [config](src/data/haspeede2/haspeede2.py)
+- `haspeede3`: [web](https://github.com/mirkolai/EVALITA2023-HaSpeeDe3), [config](src/data/haspeede3/haspeede3.py)
+- `hate_speech18`: [web](https://github.com/Vicomtech/hate-speech-dataset), [config](src/data/hate_speech18/hate_speech18.py)
+- `hateval19`: [web](https://github.com/cicl2018/HateEvalTeam), [config](src/data/hateval19/hateval19.py)
+- `ihsc`: [web](https://github.com/msang/hate-speech-corpus), [config](src/data/ihsc/ihsc.py)
+- `large_scale_xdomain`: [web](https://github.com/avaapm/hatespeech), [config](src/data/large_scale_xdomain/large_scale_xdomain.py)
+- `measureing_hate`: [web](https://huggingface.co/datasets/ucberkeley-dlab/measuring-hate-speech), [config](src/data/measureing_hate/measureing_hate.py)
+- `mlma`: [web](https://github.com/HKUST-KnowComp/MLMA_hate_speech), [config](src/data/mlma/mlma.py)
+- `olid`: [web](https://github.com/idontflow/OLID), [config](src/data/olid/olid.py)
+- `religious_hate`: [web](https://github.com/dhfbk/religious-hate-speech), [config](src/data/religious_hate/religious_hate.py)
+- `rp21`: [web](https://zenodo.org/records/5291339#.Yo3uPBxByV4), [config](src/data/rp21/rp21.py)
+- `srw16`: [web](https://github.com/zeeraktalat/hatespeech), [config](src/data/srw16/srw16.py)
+- `told_br`: [web](https://github.com/JAugusto97/ToLD-Br), [config](src/data/told_br/told_br.py)
+- `us_elect20`: [web](https://www.ims.uni-stuttgart.de/forschung/ressourcen/korpora/stance-hof), [config]()
+
+Each dataset has multiple label configurations. For details see under the `config` link.
+
+The project uses the 🤗 Datasets framework to download train and evaluation data from the Hub. However, in some cases the datasets have to be downloaded manually and the below environmental variable be set:
+- `haspeede3`: `HASPEEDE3_URL` path pointing to a directory containing the extracted files in the same structure as the [github](https://github.com/mirkolai/EVALITA2023-HaSpeeDe3) repository.
+- `ihsc`: `IHSC_TWEETS` pointing to a csv file containing tweet ids and texts.
+- `large_scale_xdomain`: `LARGE_SCALE_XDOMAIN_TWEETS` pointing to a csv file containing tweet ids and texts.
+- `religious_hate`: `RELIGIOUS_HATE_URL` path pointing to a directory containing the `dataset_en-portion_tweets.csv` and `dataset_it-portion_tweets.csv` files. Both should contain tweet ids and texts.
+- `srw16`: `SRW16_TWEETS` pointing to a csv file containing tweet ids and texts.
 ## Running experiments
+
+See and run:
+```bash
+./run_multi_example.sh
+```
 
 
 ## Papers
