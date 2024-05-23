@@ -1,6 +1,9 @@
 #!/bin/bash
 
-mkdir -p
+set -e
+set -x
+
+mkdir -p tmp
 
 # traiing on the external datasets
 # see run_classifier.py for detailed parameters
@@ -32,7 +35,7 @@ python ./run_classifier.py \
   --mlm_weight 1.0 \
   --do_train \
   --do_eval \
-  --task_name step1 \
+  --task_name ami18 ami18 ami18 hateval19 large_scale_abuse mlma srw16 \
   --dataset_name ami18 ami18 ami18 hateval19 large_scale_abuse mlma srw16 \
   --dataset_config_name en-misogyny en-misogyny_category en-target en-target fine_grained en-sentiment_rep fine_grained \
   --prompt_ids 1 0 0 0 0 0 0 \
@@ -75,7 +78,7 @@ python ./run_classifier.py \
   --do_train \
   --do_eval \
   --do_predict \
-  --task_name step2 \
+  --task_name hasoc19 \
   --dataset_name hasoc19 \
   --dataset_config_name en-fine_grained \
   --prompt_ids 0 \
