@@ -1,6 +1,8 @@
 # Abusive language detection for low-resource settings leveraging external data sources
 
-![labels_overlap_example](https://github.com/hangyav/multi_hs/assets/414596/7233c740-ad81-4e6b-bb60-54ea2cb97bc5)
+<p align="center">
+    <img src="https://github.com/hangyav/multi_hs/assets/414596/7233c740-ad81-4e6b-bb60-54ea2cb97bc5"/>
+</p>
 
 Although, already a large set of annotated corpora with different properties and label sets were created for abusive language detection, due to the broad range of social media platforms and their user groups, not all use cases and communities are supported by such datasets. Since, the annotation of new corpora is expensive, this tool leverages datasets we already have, covering a wide range of tasks related to abusive language detection. It allows building models cheaply for a new target label set and/or language, using only a few training examples of the target task. For further details, please see the related [papers](#Papers).
 
