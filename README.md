@@ -27,14 +27,14 @@ The following datasets are supported:
 - `hateval19`: [web](https://github.com/cicl2018/HateEvalTeam), [config](src/data/hateval19/hateval19.py)
 - `ihsc`: [web](https://github.com/msang/hate-speech-corpus), [config](src/data/ihsc/ihsc.py)
 - `large_scale_xdomain`: [web](https://github.com/avaapm/hatespeech), [config](src/data/large_scale_xdomain/large_scale_xdomain.py)
-- `measureing_hate`: [web](https://huggingface.co/datasets/ucberkeley-dlab/measuring-hate-speech), [config](src/data/measureing_hate/measureing_hate.py)
+- `measureing_hate`: [web](https://huggingface.co/datasets/ucberkeley-dlab/measuring-hate-speech), [config](src/data/measuring_hate/measuring_hate.py)
 - `mlma`: [web](https://github.com/HKUST-KnowComp/MLMA_hate_speech), [config](src/data/mlma/mlma.py)
 - `olid`: [web](https://github.com/idontflow/OLID), [config](src/data/olid/olid.py)
 - `religious_hate`: [web](https://github.com/dhfbk/religious-hate-speech), [config](src/data/religious_hate/religious_hate.py)
 - `rp21`: [web](https://zenodo.org/records/5291339#.Yo3uPBxByV4), [config](src/data/rp21/rp21.py)
 - `srw16`: [web](https://github.com/zeeraktalat/hatespeech), [config](src/data/srw16/srw16.py)
 - `told_br`: [web](https://github.com/JAugusto97/ToLD-Br), [config](src/data/told_br/told_br.py)
-- `us_elect20`: [web](https://www.ims.uni-stuttgart.de/forschung/ressourcen/korpora/stance-hof), [config]()
+- `us_elect20`: [web](https://www.ims.uni-stuttgart.de/forschung/ressourcen/korpora/stance-hof), [config](src/data/us_elect20/us_elect20.py)
 
 Each dataset has multiple label configurations. For details see under the `config` link.
 
